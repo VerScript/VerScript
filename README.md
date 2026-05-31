@@ -17,4 +17,4 @@ VerScript is a system-level language designed to bridge the gap between human-re
 This project is licensed under the **MIT License**.
 
 ---
-*Built by Alekhyo Biswas (https://github.com/Alekhyo-Biswas))*
+*Built by Alekhyo Biswas (https://github.com/Alekhyo-Biswas)*
