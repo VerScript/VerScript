@@ -1,17 +1,27 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "opcodes.h"
 
-// Define the Thread Pool size as discussed
-#define MAX_THREADS 32
-
+// Dynamic Thread Structure
 typedef struct {
     char threadID[16];
     int pc;
-    int status;
+    int active;
 } Thread;
 
-Thread threadPool[MAX_THREADS];
+// Pointer to our dynamic pool
+Thread *threadPool = NULL;
+int threadCount = 0;
+
+void spawnThread(const char* id) {
+    threadPool = realloc(threadPool, (threadCount + 1) * sizeof(Thread));
+    strcpy(threadPool[threadCount].threadID, id);
+    threadPool[threadCount].pc = 0;
+    threadPool[threadCount].active = 1;
+    threadCount++;
+    printf("Thread %s spawned.\n", id);
+}
 
 int main(int argc, char *argv[]) {
     if (argc < 2) {
@@ -19,34 +29,20 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    // Initial thread allocation
+    spawnThread("MAIN_THREAD");
+
+    // File loading logic
     FILE *file = fopen(argv[1], "r");
     if (!file) {
         perror("Failed to open input file");
         return 1;
     }
 
-    printf("VerScript Compiler: Loading %s...\n", argv[1]);
+    // Logic placeholder for parsing 'display'
+    printf("Terminal-only mode active. Awaiting opcodes.\n");
 
-    // Initialize Thread Pool
-    for (int i = 0; i < MAX_THREADS; i++) {
-        threadPool[i].status = 0; // 0 = Dead
-        threadPool[i].pc = 0;
-    }
-
-    // Read file into buffer
-    fseek(file, 0, SEEK_END);
-    long length = ftell(file);
-    fseek(file, 0, SEEK_SET);
-    char *buffer = malloc(length + 1);
-    if (buffer) {
-        fread(buffer, 1, length, file);
-        buffer[length] = '\0';
-    }
     fclose(file);
-
-    printf("System initialized. Loaded %ld bytes.\n", length);
-
-    // Free memory
-    free(buffer);
+    free(threadPool);
     return 0;
 }
