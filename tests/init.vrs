@@ -1,5 +1,0 @@
-// VerScript Initialization Test
-say "System Boot"
-move 10
-if 1 then
-    say "Kernel Ready"

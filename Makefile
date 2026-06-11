@@ -1,8 +1,17 @@
 CC = gcc
 CFLAGS = -Iinclude -Wall -Wextra
-SRC = src/main.c
+SRC = $(wildcard src/*.c) $(wildcard src/compiler/*.c)
 OBJ = $(SRC:.c=.o)
-TARGET = verscript
+
+ifeq ($(OS),Windows_NT)
+    TARGET = verscript.exe
+    RM = del /Q /F
+    FixPath = $(subst /,\,$1)
+else
+    TARGET = verscript
+    RM = rm -f
+    FixPath = $1
+endif
 
 all: $(TARGET)
 
@@ -10,4 +19,4 @@ $(TARGET): $(OBJ)
 	$(CC) -o $@ $^
 
 clean:
-	rm -f src/*.o $(TARGET)
+	-$(RM) $(call FixPath,$(OBJ)) $(TARGET) 2>nul || true
