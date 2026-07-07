@@ -39,6 +39,8 @@ Variable* set_var(const char *name) {
 
     v = &symtable[var_count++];
     v->name = strdup(name);
+    v->type = VAR_INT;
+    v->int_val = 0;
     v->string_val = NULL;
     return v;
 }
@@ -128,8 +130,8 @@ int main(int argc, char *argv[]) {
         fclose(file);
         return 1;
     }
-    fread(buffer, 1, length, file);
-    buffer[length] = '\0';
+    size_t read_bytes = fread(buffer, 1, length, file);
+    buffer[read_bytes] = '\0';
     fclose(file);
 
     const char *cursor = buffer;
@@ -152,12 +154,16 @@ int main(int argc, char *argv[]) {
                 Variable *v = set_var(var_tok.value);
                 char input[256];
                 if (fgets(input, sizeof(input), stdin)) {
-                    input[strcspn(input, "\n")] = 0; // Remove newline
+                    input[strcspn(input, "\r\n")] = 0; // Remove newline
                     char *endptr;
                     long lval = strtol(input, &endptr, 10);
                     if (*endptr == '\0' && input[0] != '\0') {
                         v->type = VAR_INT;
                         v->int_val = (int)lval;
+                        if (v->string_val) {
+                            free(v->string_val);
+                            v->string_val = NULL;
+                        }
                     } else {
                         v->type = VAR_STRING;
                         if (v->string_val) free(v->string_val);
