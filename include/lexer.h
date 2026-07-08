@@ -4,6 +4,8 @@
 typedef enum {
     TOKEN_DISPLAY,
     TOKEN_PROMPT,
+    TOKEN_TRUE,
+    TOKEN_FALSE,
     TOKEN_STRING,
     TOKEN_IDENTIFIER,
     TOKEN_NUMBER,

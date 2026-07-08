@@ -40,6 +40,14 @@ Token getNextToken(const char **cursor) {
             token.type = TOKEN_PROMPT;
             return token;
         }
+        if (len == 4 && strncmp(start, "true", 4) == 0) {
+            token.type = TOKEN_TRUE;
+            return token;
+        }
+        if (len == 5 && strncmp(start, "false", 5) == 0) {
+            token.type = TOKEN_FALSE;
+            return token;
+        }
 
         token.type = TOKEN_IDENTIFIER;
         token.value = malloc(len + 1);
