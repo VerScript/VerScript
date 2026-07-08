@@ -4,7 +4,7 @@
 #include "../include/opcodes.h"
 #include "../include/lexer.h"
 
-typedef enum { VAR_INT, VAR_STRING } VarType;
+typedef enum { VAR_INT, VAR_STRING, VAR_BOOL } VarType;
 
 typedef struct {
     char *name;
@@ -58,8 +58,9 @@ void freeToken(Token *t) {
 }
 
 // Simple evaluator for left-to-right math
-int evaluate_expression(const char **cursor, char **out_str) {
+int evaluate_expression(const char **cursor, char **out_str, int *out_type) {
     *out_str = NULL;
+    *out_type = VAR_INT;
     Token t = getNextToken(cursor);
     int acc = 0;
     int sign = 1;
@@ -72,13 +73,27 @@ int evaluate_expression(const char **cursor, char **out_str) {
     
     if (t.type == TOKEN_NUMBER) {
         acc = atoi(t.value) * sign;
+    } else if (t.type == TOKEN_TRUE) {
+        acc = 1;
+        *out_type = VAR_BOOL;
+    } else if (t.type == TOKEN_FALSE) {
+        acc = 0;
+        *out_type = VAR_BOOL;
     } else if (t.type == TOKEN_STRING) {
         *out_str = strdup(t.value);
+        *out_type = VAR_STRING;
     } else if (t.type == TOKEN_IDENTIFIER) {
         Variable *v = get_var(t.value);
         if (v) {
             if (v->type == VAR_INT) acc = v->int_val * sign;
-            else { *out_str = strdup(v->string_val); }
+            else if (v->type == VAR_BOOL) {
+                acc = v->int_val;
+                *out_type = VAR_BOOL;
+            }
+            else {
+                *out_str = strdup(v->string_val);
+                *out_type = VAR_STRING;
+            }
         } else {
             printf("ERROR: Undefined variable '%s'\n", t.value);
         }
@@ -100,45 +115,77 @@ int evaluate_expression(const char **cursor, char **out_str) {
 
             if (rhs.type == TOKEN_NUMBER) {
                 rhs_val = atoi(rhs.value);
+            } else if (rhs.type == TOKEN_TRUE) {
+                rhs_val = 1;
+            } else if (rhs.type == TOKEN_FALSE) {
+                rhs_val = 0;
             } else if (rhs.type == TOKEN_STRING) {
                 rhs_str = strdup(rhs.value);
             } else if (rhs.type == TOKEN_IDENTIFIER) {
                 Variable *v = get_var(rhs.value);
                 if (v) {
-                    if (v->type == VAR_INT) rhs_val = v->int_val;
+                    if (v->type == VAR_INT || v->type == VAR_BOOL) rhs_val = v->int_val;
                     else rhs_str = strdup(v->string_val);
                 }
             }
             
             if (op.type == TOKEN_PLUS) {
                 if (*out_str != NULL && rhs_str != NULL) {
-                    char *new_str = malloc(strlen(*out_str) + strlen(rhs_str) + 1);
-                    strcpy(new_str, *out_str);
-                    strcat(new_str, rhs_str);
+                    size_t len1 = strlen(*out_str);
+                    size_t len2 = strlen(rhs_str);
+                    char *new_str = malloc(len1 + len2 + 1);
+                    memcpy(new_str, *out_str, len1);
+                    memcpy(new_str + len1, rhs_str, len2 + 1);
                     free(*out_str);
                     *out_str = new_str;
                 } else if (*out_str != NULL && rhs_str == NULL) {
                     char num_str[32];
                     snprintf(num_str, sizeof(num_str), "%d", rhs_val);
-                    char *new_str = malloc(strlen(*out_str) + strlen(num_str) + 1);
-                    strcpy(new_str, *out_str);
-                    strcat(new_str, num_str);
+                    size_t len1 = strlen(*out_str);
+                    size_t len2 = strlen(num_str);
+                    char *new_str = malloc(len1 + len2 + 1);
+                    memcpy(new_str, *out_str, len1);
+                    memcpy(new_str + len1, num_str, len2 + 1);
                     free(*out_str);
                     *out_str = new_str;
                 } else if (*out_str == NULL && rhs_str != NULL) {
                     char num_str[32];
                     snprintf(num_str, sizeof(num_str), "%d", acc);
-                    char *new_str = malloc(strlen(num_str) + strlen(rhs_str) + 1);
-                    strcpy(new_str, num_str);
-                    strcat(new_str, rhs_str);
+                    size_t len1 = strlen(num_str);
+                    size_t len2 = strlen(rhs_str);
+                    char *new_str = malloc(len1 + len2 + 1);
+                    memcpy(new_str, num_str, len1);
+                    memcpy(new_str + len1, rhs_str, len2 + 1);
                     *out_str = new_str;
+                    *out_type = VAR_STRING; // Ensures *out_type updates properly if an integer was converted
                 } else {
                     acc += rhs_val;
                 }
-            } else if (op.type == TOKEN_MINUS) acc -= rhs_val;
-            else if (op.type == TOKEN_STAR) acc *= rhs_val;
+            } else if (op.type == TOKEN_MINUS) {
+                if (rhs_str || *out_type != VAR_INT) {
+                    printf("ERROR: Invalid operands for operator '-'\n");
+                    exit(1);
+                }
+                acc -= rhs_val;
+            }
+            else if (op.type == TOKEN_STAR) {
+                if (rhs_str || *out_type != VAR_INT) {
+                    printf("ERROR: Invalid operands for operator '*'\n");
+                    exit(1);
+                }
+                acc *= rhs_val;
+            }
             else if (op.type == TOKEN_SLASH) {
-                if (rhs_val != 0) acc /= rhs_val;
+                if (rhs_str || *out_type != VAR_INT) {
+                    printf("ERROR: Invalid operands for operator '/'\n");
+                    exit(1);
+                }
+                if (rhs_val != 0) {
+                    acc /= rhs_val;
+                } else {
+                    printf("ERROR: Division by zero\n");
+                    exit(1);
+                }
             }
             if (rhs_str) free(rhs_str);
             freeToken(&rhs);
@@ -157,7 +204,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    FILE *file = fopen(argv[1], "r");
+    FILE *file = fopen(argv[1], "rb");
     if (!file) {
         printf("ERROR: Could not open file %s\n", argv[1]);
         return 1;
@@ -185,10 +232,13 @@ int main(int argc, char *argv[]) {
     while ((t = getNextToken(&cursor)).type != TOKEN_EOF) {
         if (t.type == TOKEN_DISPLAY) {
             char *out_str = NULL;
-            int val = evaluate_expression(&cursor, &out_str);
+            int out_type = VAR_INT;
+            int val = evaluate_expression(&cursor, &out_str, &out_type);
             if (out_str) {
                 printf("%s\n", out_str);
                 free(out_str);
+            } else if (out_type == VAR_BOOL) {
+                printf("%s\n", val ? "true" : "false");
             } else {
                 printf("%d\n", val);
             }
@@ -227,7 +277,8 @@ int main(int argc, char *argv[]) {
                 Token colon_consumed = getNextToken(&cursor); // Consume COLON
                 freeToken(&colon_consumed);
                 char *out_str = NULL;
-                int val = evaluate_expression(&cursor, &out_str);
+                int out_type = VAR_INT;
+                int val = evaluate_expression(&cursor, &out_str, &out_type);
                 Variable *v = set_var(t.value);
                 if (out_str) {
                     v->type = VAR_STRING;
@@ -235,6 +286,13 @@ int main(int argc, char *argv[]) {
                         free(v->string_val);
                     }
                     v->string_val = out_str;
+                } else if (out_type == VAR_BOOL) {
+                    v->type = VAR_BOOL;
+                    v->int_val = val;
+                    if (v->string_val) {
+                        free(v->string_val);
+                        v->string_val = NULL;
+                    }
                 } else {
                     v->type = VAR_INT;
                     v->int_val = val;
