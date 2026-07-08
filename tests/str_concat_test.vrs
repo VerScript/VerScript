@@ -1,0 +1,4 @@
+s1 : "hello "
+s2 : "world"
+s3 : s1 + s2
+display s3
