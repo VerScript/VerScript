@@ -1,1 +1,2 @@
 Jules Daily Run - Fixed uninitialized variable issues, text reading EOF bugs, and prompt memory leak + CRLF formatting handling.
+Jules Daily Run - Added unary minus support, string concatenation logic, and ftell negative return value check.

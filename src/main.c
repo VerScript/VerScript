@@ -62,15 +62,22 @@ int evaluate_expression(const char **cursor, char **out_str) {
     *out_str = NULL;
     Token t = getNextToken(cursor);
     int acc = 0;
+    int sign = 1;
+
+    if (t.type == TOKEN_MINUS) {
+        sign = -1;
+        freeToken(&t);
+        t = getNextToken(cursor);
+    }
     
     if (t.type == TOKEN_NUMBER) {
-        acc = atoi(t.value);
+        acc = atoi(t.value) * sign;
     } else if (t.type == TOKEN_STRING) {
         *out_str = strdup(t.value);
     } else if (t.type == TOKEN_IDENTIFIER) {
         Variable *v = get_var(t.value);
         if (v) {
-            if (v->type == VAR_INT) acc = v->int_val;
+            if (v->type == VAR_INT) acc = v->int_val * sign;
             else { *out_str = strdup(v->string_val); }
         } else {
             printf("ERROR: Undefined variable '%s'\n", t.value);
@@ -89,18 +96,51 @@ int evaluate_expression(const char **cursor, char **out_str) {
             freeToken(&op_consumed);
             Token rhs = getNextToken(cursor);
             int rhs_val = 0;
-            if (rhs.type == TOKEN_NUMBER) rhs_val = atoi(rhs.value);
-            else if (rhs.type == TOKEN_IDENTIFIER) {
+            char *rhs_str = NULL;
+
+            if (rhs.type == TOKEN_NUMBER) {
+                rhs_val = atoi(rhs.value);
+            } else if (rhs.type == TOKEN_STRING) {
+                rhs_str = strdup(rhs.value);
+            } else if (rhs.type == TOKEN_IDENTIFIER) {
                 Variable *v = get_var(rhs.value);
-                if (v && v->type == VAR_INT) rhs_val = v->int_val;
+                if (v) {
+                    if (v->type == VAR_INT) rhs_val = v->int_val;
+                    else rhs_str = strdup(v->string_val);
+                }
             }
             
-            if (op.type == TOKEN_PLUS) acc += rhs_val;
-            else if (op.type == TOKEN_MINUS) acc -= rhs_val;
+            if (op.type == TOKEN_PLUS) {
+                if (*out_str != NULL && rhs_str != NULL) {
+                    char *new_str = malloc(strlen(*out_str) + strlen(rhs_str) + 1);
+                    strcpy(new_str, *out_str);
+                    strcat(new_str, rhs_str);
+                    free(*out_str);
+                    *out_str = new_str;
+                } else if (*out_str != NULL && rhs_str == NULL) {
+                    char num_str[32];
+                    snprintf(num_str, sizeof(num_str), "%d", rhs_val);
+                    char *new_str = malloc(strlen(*out_str) + strlen(num_str) + 1);
+                    strcpy(new_str, *out_str);
+                    strcat(new_str, num_str);
+                    free(*out_str);
+                    *out_str = new_str;
+                } else if (*out_str == NULL && rhs_str != NULL) {
+                    char num_str[32];
+                    snprintf(num_str, sizeof(num_str), "%d", acc);
+                    char *new_str = malloc(strlen(num_str) + strlen(rhs_str) + 1);
+                    strcpy(new_str, num_str);
+                    strcat(new_str, rhs_str);
+                    *out_str = new_str;
+                } else {
+                    acc += rhs_val;
+                }
+            } else if (op.type == TOKEN_MINUS) acc -= rhs_val;
             else if (op.type == TOKEN_STAR) acc *= rhs_val;
             else if (op.type == TOKEN_SLASH) {
                 if (rhs_val != 0) acc /= rhs_val;
             }
+            if (rhs_str) free(rhs_str);
             freeToken(&rhs);
         } else {
             freeToken(&op);
@@ -124,6 +164,11 @@ int main(int argc, char *argv[]) {
     }
     fseek(file, 0, SEEK_END);
     long length = ftell(file);
+    if (length < 0) {
+        printf("ERROR: Could not determine file size\n");
+        fclose(file);
+        return 1;
+    }
     fseek(file, 0, SEEK_SET);
     char *buffer = malloc(length + 1);
     if (!buffer) {

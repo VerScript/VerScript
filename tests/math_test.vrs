@@ -1,0 +1,8 @@
+x : 10 + 20
+y : 10 - 20
+z : 10 * 20
+w : 10 / 20
+display x
+display y
+display z
+display w

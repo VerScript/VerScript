@@ -1,0 +1,6 @@
+s1 : 5 + " hello"
+s2 : "hello " + 5
+s3 : "abc " + 10 + " def"
+display s1
+display s2
+display s3
