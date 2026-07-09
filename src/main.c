@@ -74,12 +74,24 @@ int evaluate_expression(const char **cursor, char **out_str, int *out_type) {
     if (t.type == TOKEN_NUMBER) {
         acc = atoi(t.value) * sign;
     } else if (t.type == TOKEN_TRUE) {
+        if (sign == -1) {
+            printf("ERROR: Invalid operand for unary '-'\n");
+            exit(1);
+        }
         acc = 1;
         *out_type = VAR_BOOL;
     } else if (t.type == TOKEN_FALSE) {
+        if (sign == -1) {
+            printf("ERROR: Invalid operand for unary '-'\n");
+            exit(1);
+        }
         acc = 0;
         *out_type = VAR_BOOL;
     } else if (t.type == TOKEN_STRING) {
+        if (sign == -1) {
+            printf("ERROR: Invalid operand for unary '-'\n");
+            exit(1);
+        }
         *out_str = strdup(t.value);
         *out_type = VAR_STRING;
     } else if (t.type == TOKEN_IDENTIFIER) {
@@ -87,15 +99,24 @@ int evaluate_expression(const char **cursor, char **out_str, int *out_type) {
         if (v) {
             if (v->type == VAR_INT) acc = v->int_val * sign;
             else if (v->type == VAR_BOOL) {
+                if (sign == -1) {
+                    printf("ERROR: Invalid operand for unary '-'\n");
+                    exit(1);
+                }
                 acc = v->int_val;
                 *out_type = VAR_BOOL;
             }
             else {
+                if (sign == -1) {
+                    printf("ERROR: Invalid operand for unary '-'\n");
+                    exit(1);
+                }
                 *out_str = strdup(v->string_val);
                 *out_type = VAR_STRING;
             }
         } else {
             printf("ERROR: Undefined variable '%s'\n", t.value);
+            exit(1);
         }
     } else {
         printf("ERROR: Expected value in expression\n");
@@ -126,6 +147,9 @@ int evaluate_expression(const char **cursor, char **out_str, int *out_type) {
                 if (v) {
                     if (v->type == VAR_INT || v->type == VAR_BOOL) rhs_val = v->int_val;
                     else rhs_str = strdup(v->string_val);
+                } else {
+                    printf("ERROR: Undefined variable '%s'\n", rhs.value);
+                    exit(1);
                 }
             }
             
@@ -160,28 +184,32 @@ int evaluate_expression(const char **cursor, char **out_str, int *out_type) {
                     *out_type = VAR_STRING; // Ensures *out_type updates properly if an integer was converted
                 } else {
                     acc += rhs_val;
+                    *out_type = VAR_INT;
                 }
             } else if (op.type == TOKEN_MINUS) {
-                if (rhs_str || *out_type != VAR_INT) {
+                if (rhs_str || (*out_type != VAR_INT && *out_type != VAR_BOOL)) {
                     printf("ERROR: Invalid operands for operator '-'\n");
                     exit(1);
                 }
                 acc -= rhs_val;
+                *out_type = VAR_INT;
             }
             else if (op.type == TOKEN_STAR) {
-                if (rhs_str || *out_type != VAR_INT) {
+                if (rhs_str || (*out_type != VAR_INT && *out_type != VAR_BOOL)) {
                     printf("ERROR: Invalid operands for operator '*'\n");
                     exit(1);
                 }
                 acc *= rhs_val;
+                *out_type = VAR_INT;
             }
             else if (op.type == TOKEN_SLASH) {
-                if (rhs_str || *out_type != VAR_INT) {
+                if (rhs_str || (*out_type != VAR_INT && *out_type != VAR_BOOL)) {
                     printf("ERROR: Invalid operands for operator '/'\n");
                     exit(1);
                 }
                 if (rhs_val != 0) {
                     acc /= rhs_val;
+                    *out_type = VAR_INT;
                 } else {
                     printf("ERROR: Division by zero\n");
                     exit(1);

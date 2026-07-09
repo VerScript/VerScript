@@ -1,0 +1,4 @@
+display true + 3
+display true - 1
+display false * 5
+display true / 1
