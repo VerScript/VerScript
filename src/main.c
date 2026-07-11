@@ -120,6 +120,7 @@ int evaluate_expression(const char **cursor, char **out_str, int *out_type) {
         }
     } else {
         printf("ERROR: Expected value in expression\n");
+        exit(1);
     }
     freeToken(&t);
     
@@ -133,24 +134,59 @@ int evaluate_expression(const char **cursor, char **out_str, int *out_type) {
             Token rhs = getNextToken(cursor);
             int rhs_val = 0;
             char *rhs_str = NULL;
+            int rhs_sign = 1;
+
+            if (rhs.type == TOKEN_MINUS) {
+                rhs_sign = -1;
+                freeToken(&rhs);
+                rhs = getNextToken(cursor);
+            }
 
             if (rhs.type == TOKEN_NUMBER) {
-                rhs_val = atoi(rhs.value);
+                rhs_val = atoi(rhs.value) * rhs_sign;
             } else if (rhs.type == TOKEN_TRUE) {
+                if (rhs_sign == -1) {
+                    printf("ERROR: Invalid operand for unary '-'\n");
+                    exit(1);
+                }
                 rhs_val = 1;
             } else if (rhs.type == TOKEN_FALSE) {
+                if (rhs_sign == -1) {
+                    printf("ERROR: Invalid operand for unary '-'\n");
+                    exit(1);
+                }
                 rhs_val = 0;
             } else if (rhs.type == TOKEN_STRING) {
+                if (rhs_sign == -1) {
+                    printf("ERROR: Invalid operand for unary '-'\n");
+                    exit(1);
+                }
                 rhs_str = strdup(rhs.value);
             } else if (rhs.type == TOKEN_IDENTIFIER) {
                 Variable *v = get_var(rhs.value);
                 if (v) {
-                    if (v->type == VAR_INT || v->type == VAR_BOOL) rhs_val = v->int_val;
-                    else rhs_str = strdup(v->string_val);
+                    if (v->type == VAR_INT) rhs_val = v->int_val * rhs_sign;
+                    else if (v->type == VAR_BOOL) {
+                        if (rhs_sign == -1) {
+                            printf("ERROR: Invalid operand for unary '-'\n");
+                            exit(1);
+                        }
+                        rhs_val = v->int_val;
+                    }
+                    else {
+                        if (rhs_sign == -1) {
+                            printf("ERROR: Invalid operand for unary '-'\n");
+                            exit(1);
+                        }
+                        rhs_str = strdup(v->string_val);
+                    }
                 } else {
                     printf("ERROR: Undefined variable '%s'\n", rhs.value);
                     exit(1);
                 }
+            } else {
+                printf("ERROR: Expected value in expression\n");
+                exit(1);
             }
             
             if (op.type == TOKEN_PLUS) {
