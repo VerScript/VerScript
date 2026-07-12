@@ -1,0 +1,39 @@
+! VerScript Conditionals and Comparisons Test
+
+display "--- Test Comparisons ---"
+a : 5
+b : 10
+
+if a < b then
+  display "a < b is true"
+else
+  display "a < b is false"
+
+if a = 5 then
+  display "a = 5 is true"
+
+if a x= b then
+  display "a x= b is true (not equal)"
+
+display "--- Test If-Else-If-Else ---"
+val : 3
+if val = 1 then
+  display "val is 1"
+else if val = 2 then
+  display "val is 2"
+else if val = 3 then
+  display "val is 3 (correct)"
+else
+  display "val is something else"
+
+display "--- Test While Loop ---"
+count : 1
+while count <= 3
+  display "count: " + count
+  count : count + 1
+
+display "--- Test Until Loop ---"
+count2 : 1
+until count2 > 3
+  display "until count2: " + count2
+  count2 : count2 + 1

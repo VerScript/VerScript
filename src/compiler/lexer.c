@@ -64,6 +64,26 @@ Token getNextToken(const char **cursor) {
             token.type = TOKEN_TO;
             return token;
         }
+        if (len == 2 && strncmp(start, "if", 2) == 0) {
+            token.type = TOKEN_IF;
+            return token;
+        }
+        if (len == 4 && strncmp(start, "then", 4) == 0) {
+            token.type = TOKEN_THEN;
+            return token;
+        }
+        if (len == 4 && strncmp(start, "else", 4) == 0) {
+            token.type = TOKEN_ELSE;
+            return token;
+        }
+        if (len == 5 && strncmp(start, "while", 5) == 0) {
+            token.type = TOKEN_WHILE;
+            return token;
+        }
+        if (len == 5 && strncmp(start, "until", 5) == 0) {
+            token.type = TOKEN_UNTIL;
+            return token;
+        }
 
         token.type = TOKEN_IDENTIFIER;
         token.value = malloc(len + 1);
@@ -86,6 +106,12 @@ Token getNextToken(const char **cursor) {
     }
 
     // Symbols
+    if (strncmp(*cursor, "x=", 2) == 0) { token.type = TOKEN_NOT_EQUAL; (*cursor) += 2; return token; }
+    if (strncmp(*cursor, ">=", 2) == 0) { token.type = TOKEN_GREATER_EQUAL; (*cursor) += 2; return token; }
+    if (strncmp(*cursor, "<=", 2) == 0) { token.type = TOKEN_LESS_EQUAL; (*cursor) += 2; return token; }
+    if (**cursor == '=') { token.type = TOKEN_EQUAL; (*cursor)++; return token; }
+    if (**cursor == '>') { token.type = TOKEN_GREATER; (*cursor)++; return token; }
+    if (**cursor == '<') { token.type = TOKEN_LESS; (*cursor)++; return token; }
     if (**cursor == ':') { token.type = TOKEN_COLON; (*cursor)++; return token; }
     if (**cursor == '+') { token.type = TOKEN_PLUS; (*cursor)++; return token; }
     if (**cursor == '-') { token.type = TOKEN_MINUS; (*cursor)++; return token; }

@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include "../include/opcodes.h"
 #include "../include/lexer.h"
 
@@ -124,7 +125,6 @@ int evaluate_expression(const char **cursor, char **out_str, int *out_type) {
     }
     freeToken(&t);
     
-    // Check for operators
     while (1) {
         Token op = peekToken(cursor);
         if (op.type == TOKEN_PLUS || op.type == TOKEN_MINUS || op.type == TOKEN_STAR || op.type == TOKEN_SLASH) {
@@ -217,7 +217,7 @@ int evaluate_expression(const char **cursor, char **out_str, int *out_type) {
                     memcpy(new_str, num_str, len1);
                     memcpy(new_str + len1, rhs_str, len2 + 1);
                     *out_str = new_str;
-                    *out_type = VAR_STRING; // Ensures *out_type updates properly if an integer was converted
+                    *out_type = VAR_STRING;
                 } else {
                     acc += rhs_val;
                     *out_type = VAR_INT;
@@ -253,7 +253,54 @@ int evaluate_expression(const char **cursor, char **out_str, int *out_type) {
             }
             if (rhs_str) free(rhs_str);
             freeToken(&rhs);
-        } else {
+        }
+        else if (op.type == TOKEN_EQUAL || op.type == TOKEN_GREATER || op.type == TOKEN_LESS ||
+                 op.type == TOKEN_GREATER_EQUAL || op.type == TOKEN_LESS_EQUAL || op.type == TOKEN_NOT_EQUAL) {
+            freeToken(&op);
+            Token op_consumed = getNextToken(cursor);
+            freeToken(&op_consumed);
+
+            char *rhs_str = NULL;
+            int rhs_type = VAR_INT;
+            int rhs_val = evaluate_expression(cursor, &rhs_str, &rhs_type);
+
+            int cmp_res = 0;
+            if (*out_str != NULL && rhs_str != NULL) {
+                int cmp = strcmp(*out_str, rhs_str);
+                if (op.type == TOKEN_EQUAL) cmp_res = (cmp == 0);
+                else if (op.type == TOKEN_NOT_EQUAL) cmp_res = (cmp != 0);
+                else if (op.type == TOKEN_GREATER) cmp_res = (cmp > 0);
+                else if (op.type == TOKEN_LESS) cmp_res = (cmp < 0);
+                else if (op.type == TOKEN_GREATER_EQUAL) cmp_res = (cmp >= 0);
+                else if (op.type == TOKEN_LESS_EQUAL) cmp_res = (cmp <= 0);
+            } else if (*out_str == NULL && rhs_str == NULL) {
+                if (op.type == TOKEN_EQUAL) cmp_res = (acc == rhs_val);
+                else if (op.type == TOKEN_NOT_EQUAL) cmp_res = (acc != rhs_val);
+                else if (op.type == TOKEN_GREATER) cmp_res = (acc > rhs_val);
+                else if (op.type == TOKEN_LESS) cmp_res = (acc < rhs_val);
+                else if (op.type == TOKEN_GREATER_EQUAL) cmp_res = (acc >= rhs_val);
+                else if (op.type == TOKEN_LESS_EQUAL) cmp_res = (acc <= rhs_val);
+            } else {
+                if (op.type == TOKEN_EQUAL) cmp_res = 0;
+                else if (op.type == TOKEN_NOT_EQUAL) cmp_res = 1;
+                else {
+                    printf("ERROR: Invalid comparison between string and non-string\n");
+                    exit(1);
+                }
+            }
+
+            if (*out_str) {
+                free(*out_str);
+                *out_str = NULL;
+            }
+            if (rhs_str) {
+                free(rhs_str);
+            }
+
+            acc = cmp_res;
+            *out_type = VAR_BOOL;
+        }
+        else {
             freeToken(&op);
             break;
         }
@@ -531,6 +578,195 @@ void execute_block(int start, int end) {
                     free(v->string_val);
                     v->string_val = NULL;
                 }
+                execute_block(block_start, block_end);
+            }
+            i = block_end + 1;
+        }
+        else if (strncmp(line->text, "if ", 3) == 0) {
+            const char *cursor = line->text + 3;
+            const char *then_ptr = strstr(cursor, " then");
+            if (!then_ptr) {
+                printf("ERROR: Expected 'then' after if condition on line %d\n", line->line_num);
+                exit(1);
+            }
+            int cond_len = then_ptr - cursor;
+            char *cond_str = malloc(cond_len + 1);
+            strncpy(cond_str, cursor, cond_len);
+            cond_str[cond_len] = '\0';
+
+            const char *cond_cursor = cond_str;
+            char *out_str = NULL;
+            int out_type = VAR_INT;
+            int cond_val = evaluate_expression(&cond_cursor, &out_str, &out_type);
+            if (out_str) {
+                printf("ERROR: Condition must evaluate to a boolean or number on line %d\n", line->line_num);
+                exit(1);
+            }
+            free(cond_str);
+
+            int block_start = i + 1;
+            int block_end = i;
+            while (block_end + 1 <= end) {
+                Line *next = &lines[block_end + 1];
+                if (next->text[0] == '\0' || next->text[0] == '!') {
+                    block_end++;
+                    continue;
+                }
+                if (next->indent > line->indent) {
+                    block_end++;
+                } else {
+                    break;
+                }
+            }
+
+            int executed = 0;
+            if (cond_val) {
+                execute_block(block_start, block_end);
+                executed = 1;
+            }
+
+            int current_idx = block_end + 1;
+            while (current_idx <= end) {
+                Line *lookahead = &lines[current_idx];
+                if (lookahead->text[0] == '\0' || lookahead->text[0] == '!') {
+                    current_idx++;
+                    continue;
+                }
+                if (lookahead->indent != line->indent) {
+                    break;
+                }
+
+                if (strncmp(lookahead->text, "else if ", 8) == 0) {
+                    int elif_start = current_idx + 1;
+                    int elif_end = current_idx;
+                    while (elif_end + 1 <= end) {
+                        Line *next = &lines[elif_end + 1];
+                        if (next->text[0] == '\0' || next->text[0] == '!') {
+                            elif_end++;
+                            continue;
+                        }
+                        if (next->indent > lookahead->indent) {
+                            elif_end++;
+                        } else {
+                            break;
+                        }
+                    }
+
+                    if (!executed) {
+                        const char *elif_cursor = lookahead->text + 8;
+                        const char *elif_then_ptr = strstr(elif_cursor, " then");
+                        if (!elif_then_ptr) {
+                            printf("ERROR: Expected 'then' after else if condition on line %d\n", lookahead->line_num);
+                            exit(1);
+                        }
+                        int elif_cond_len = elif_then_ptr - elif_cursor;
+                        char *elif_cond_str = malloc(elif_cond_len + 1);
+                        strncpy(elif_cond_str, elif_cursor, elif_cond_len);
+                        elif_cond_str[elif_cond_len] = '\0';
+
+                        const char *elif_cond_cursor = elif_cond_str;
+                        char *elif_out_str = NULL;
+                        int elif_out_type = VAR_INT;
+                        int elif_cond_val = evaluate_expression(&elif_cond_cursor, &elif_out_str, &elif_out_type);
+                        if (elif_out_str) {
+                            printf("ERROR: Condition must evaluate to a boolean or number on line %d\n", lookahead->line_num);
+                            exit(1);
+                        }
+                        free(elif_cond_str);
+
+                        if (elif_cond_val) {
+                            execute_block(elif_start, elif_end);
+                            executed = 1;
+                        }
+                    }
+                    current_idx = elif_end + 1;
+                }
+                else if (strncmp(lookahead->text, "else ", 5) == 0 || strcmp(lookahead->text, "else") == 0) {
+                    int else_start = current_idx + 1;
+                    int else_end = current_idx;
+                    while (else_end + 1 <= end) {
+                        Line *next = &lines[else_end + 1];
+                        if (next->text[0] == '\0' || next->text[0] == '!') {
+                            else_end++;
+                            continue;
+                        }
+                        if (next->indent > lookahead->indent) {
+                            else_end++;
+                        } else {
+                            break;
+                        }
+                    }
+
+                    if (!executed) {
+                        execute_block(else_start, else_end);
+                        executed = 1;
+                    }
+                    current_idx = else_end + 1;
+                }
+                else {
+                    break;
+                }
+            }
+            i = current_idx;
+        }
+        else if (strncmp(line->text, "while ", 6) == 0) {
+            int block_start = i + 1;
+            int block_end = i;
+            while (block_end + 1 <= end) {
+                Line *next = &lines[block_end + 1];
+                if (next->text[0] == '\0' || next->text[0] == '!') {
+                    block_end++;
+                    continue;
+                }
+                if (next->indent > line->indent) {
+                    block_end++;
+                } else {
+                    break;
+                }
+            }
+
+            while (1) {
+                const char *cursor = line->text + 6;
+                char *out_str = NULL;
+                int out_type = VAR_INT;
+                int cond_val = evaluate_expression(&cursor, &out_str, &out_type);
+                if (out_str) {
+                    printf("ERROR: While condition must evaluate to a boolean or number on line %d\n", line->line_num);
+                    exit(1);
+                }
+                if (!cond_val) break;
+
+                execute_block(block_start, block_end);
+            }
+            i = block_end + 1;
+        }
+        else if (strncmp(line->text, "until ", 6) == 0) {
+            int block_start = i + 1;
+            int block_end = i;
+            while (block_end + 1 <= end) {
+                Line *next = &lines[block_end + 1];
+                if (next->text[0] == '\0' || next->text[0] == '!') {
+                    block_end++;
+                    continue;
+                }
+                if (next->indent > line->indent) {
+                    block_end++;
+                } else {
+                    break;
+                }
+            }
+
+            while (1) {
+                const char *cursor = line->text + 6;
+                char *out_str = NULL;
+                int out_type = VAR_INT;
+                int cond_val = evaluate_expression(&cursor, &out_str, &out_type);
+                if (out_str) {
+                    printf("ERROR: Until condition must evaluate to a boolean or number on line %d\n", line->line_num);
+                    exit(1);
+                }
+                if (cond_val) break;
+
                 execute_block(block_start, block_end);
             }
             i = block_end + 1;
