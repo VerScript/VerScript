@@ -48,6 +48,22 @@ Token getNextToken(const char **cursor) {
             token.type = TOKEN_FALSE;
             return token;
         }
+        if (len == 4 && strncmp(start, "loop", 4) == 0) {
+            token.type = TOKEN_LOOP;
+            return token;
+        }
+        if (len == 7 && strncmp(start, "iterate", 7) == 0) {
+            token.type = TOKEN_ITERATE;
+            return token;
+        }
+        if (len == 4 && strncmp(start, "from", 4) == 0) {
+            token.type = TOKEN_FROM;
+            return token;
+        }
+        if (len == 2 && strncmp(start, "to", 2) == 0) {
+            token.type = TOKEN_TO;
+            return token;
+        }
 
         token.type = TOKEN_IDENTIFIER;
         token.value = malloc(len + 1);

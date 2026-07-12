@@ -1,0 +1,19 @@
+! VerScript Loop Tests
+
+display "--- testing loop ---"
+loop 3
+  display "hello"
+
+display "--- testing iterate (with from/to) ---"
+iterate idx from 1 to 4
+  display idx
+
+display "--- testing iterate (omitting from) ---"
+count : 2
+iterate count to 5
+  display count
+
+display "--- testing nested loops ---"
+iterate outer from 1 to 2
+  loop 2
+    display "outer: " + outer

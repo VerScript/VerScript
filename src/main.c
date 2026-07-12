@@ -262,6 +262,286 @@ int evaluate_expression(const char **cursor, char **out_str, int *out_type) {
     return acc;
 }
 
+typedef struct {
+    char *text;
+    int indent;
+    int line_num;
+} Line;
+
+Line *lines = NULL;
+int line_count = 0;
+int line_capacity = 0;
+
+void parse_lines(const char *buffer) {
+    const char *p = buffer;
+    int line_num = 1;
+    while (*p != '\0') {
+        const char *eol = p;
+        while (*eol != '\n' && *eol != '\0') eol++;
+        
+        int raw_len = eol - p;
+        char *raw_line = malloc(raw_len + 1);
+        memcpy(raw_line, p, raw_len);
+        raw_line[raw_len] = '\0';
+        
+        int indent = 0;
+        char *src = raw_line;
+        while (*src == ' ' || *src == '\t') {
+            if (*src == ' ') indent += 1;
+            else indent += 4;
+            src++;
+        }
+        
+        char *code = strdup(src);
+        int len = strlen(code);
+        while (len > 0 && isspace((unsigned char)code[len - 1])) {
+            code[len - 1] = '\0';
+            len--;
+        }
+        
+        if (line_count >= line_capacity) {
+            line_capacity = (line_capacity == 0) ? 100 : line_capacity * 2;
+            lines = realloc(lines, line_capacity * sizeof(Line));
+        }
+        lines[line_count].text = code;
+        lines[line_count].indent = indent;
+        lines[line_count].line_num = line_num;
+        line_count++;
+        
+        free(raw_line);
+        
+        if (*eol == '\n') p = eol + 1;
+        else p = eol;
+        line_num++;
+    }
+}
+
+void execute_line(const char *text, int line_num) {
+    const char *cursor = text;
+    Token t;
+    while ((t = getNextToken(&cursor)).type != TOKEN_EOF) {
+        if (t.type == TOKEN_DISPLAY) {
+            char *out_str = NULL;
+            int out_type = VAR_INT;
+            int val = evaluate_expression(&cursor, &out_str, &out_type);
+            if (out_str) {
+                printf("%s\n", out_str);
+                free(out_str);
+            } else if (out_type == VAR_BOOL) {
+                printf("%s\n", val ? "true" : "false");
+            } else {
+                printf("%d\n", val);
+            }
+        } 
+        else if (t.type == TOKEN_PROMPT) {
+            Token var_tok = getNextToken(&cursor);
+            if (var_tok.type == TOKEN_IDENTIFIER) {
+                Variable *v = set_var(var_tok.value);
+                char input[256];
+                if (fgets(input, sizeof(input), stdin)) {
+                    input[strcspn(input, "\r\n")] = 0;
+                    char *endptr;
+                    long lval = strtol(input, &endptr, 10);
+                    if (*endptr == '\0' && input[0] != '\0') {
+                        v->type = VAR_INT;
+                        v->int_val = (int)lval;
+                        if (v->string_val) {
+                            free(v->string_val);
+                            v->string_val = NULL;
+                        }
+                    } else {
+                        v->type = VAR_STRING;
+                        if (v->string_val) free(v->string_val);
+                        v->string_val = strdup(input);
+                    }
+                }
+            } else {
+                printf("ERROR: Expected variable name after prompt on line %d\n", line_num);
+                exit(1);
+            }
+            if (var_tok.value) free(var_tok.value);
+        }
+        else if (t.type == TOKEN_IDENTIFIER) {
+            Token next = peekToken(&cursor);
+            if (next.type == TOKEN_COLON) {
+                freeToken(&next);
+                Token colon_consumed = getNextToken(&cursor);
+                freeToken(&colon_consumed);
+                char *out_str = NULL;
+                int out_type = VAR_INT;
+                int val = evaluate_expression(&cursor, &out_str, &out_type);
+                Variable *v = set_var(t.value);
+                if (out_str) {
+                    v->type = VAR_STRING;
+                    if (v->string_val) free(v->string_val);
+                    v->string_val = out_str;
+                } else if (out_type == VAR_BOOL) {
+                    v->type = VAR_BOOL;
+                    v->int_val = val;
+                    if (v->string_val) {
+                        free(v->string_val);
+                        v->string_val = NULL;
+                    }
+                } else {
+                    v->type = VAR_INT;
+                    v->int_val = val;
+                    if (v->string_val) {
+                        free(v->string_val);
+                        v->string_val = NULL;
+                    }
+                }
+            } else {
+                freeToken(&next);
+                printf("ERROR: Unexpected identifier '%s' on line %d\n", t.value, line_num);
+                exit(1);
+            }
+        }
+        else if (t.type == TOKEN_ERROR) {
+            printf("LEXER ERROR: Unexpected token '%s' on line %d\n", t.value ? t.value : "", line_num);
+            exit(1);
+        }
+        freeToken(&t);
+    }
+}
+
+void execute_block(int start, int end) {
+    int expected_indent = -1;
+    int i = start;
+    while (i <= end) {
+        Line *line = &lines[i];
+        if (line->text[0] == '\0' || line->text[0] == '!') {
+            i++;
+            continue;
+        }
+        if (expected_indent == -1) {
+            expected_indent = line->indent;
+        } else if (line->indent != expected_indent) {
+            printf("ERROR: Indentation error on line %d (expected %d, got %d)\n", line->line_num, expected_indent, line->indent);
+            exit(1);
+        }
+
+        if (strncmp(line->text, "loop ", 5) == 0 || strcmp(line->text, "loop") == 0) {
+            int block_start = i + 1;
+            int block_end = i;
+            while (block_end + 1 <= end) {
+                Line *next = &lines[block_end + 1];
+                if (next->text[0] == '\0' || next->text[0] == '!') {
+                    block_end++;
+                    continue;
+                }
+                if (next->indent > line->indent) {
+                    block_end++;
+                } else {
+                    break;
+                }
+            }
+
+            const char *cursor = line->text + 4;
+            char *out_str = NULL;
+            int out_type = VAR_INT;
+            int iters = evaluate_expression(&cursor, &out_str, &out_type);
+            if (out_str || out_type == VAR_STRING) {
+                printf("ERROR: Loop iterations must be numeric on line %d\n", line->line_num);
+                exit(1);
+            }
+
+            for (int k = 0; k < iters; k++) {
+                execute_block(block_start, block_end);
+            }
+            i = block_end + 1;
+        }
+        else if (strncmp(line->text, "iterate ", 8) == 0) {
+            int block_start = i + 1;
+            int block_end = i;
+            while (block_end + 1 <= end) {
+                Line *next = &lines[block_end + 1];
+                if (next->text[0] == '\0' || next->text[0] == '!') {
+                    block_end++;
+                    continue;
+                }
+                if (next->indent > line->indent) {
+                    block_end++;
+                } else {
+                    break;
+                }
+            }
+
+            const char *cursor = line->text + 8;
+            while (isspace((unsigned char)*cursor)) cursor++;
+            const char *id_start = cursor;
+            while (isalnum((unsigned char)*cursor) || *cursor == '_') cursor++;
+            int id_len = cursor - id_start;
+            if (id_len == 0) {
+                printf("ERROR: Expected identifier after iterate on line %d\n", line->line_num);
+                exit(1);
+            }
+            char var_name[64];
+            strncpy(var_name, id_start, id_len);
+            var_name[id_len] = '\0';
+
+            while (isspace((unsigned char)*cursor)) cursor++;
+            int start_val = 0;
+            if (strncmp(cursor, "from", 4) == 0 && isspace((unsigned char)cursor[4])) {
+                cursor += 4;
+                char *out_str = NULL;
+                int out_type = VAR_INT;
+                start_val = evaluate_expression(&cursor, &out_str, &out_type);
+                if (out_str || out_type == VAR_STRING) {
+                    printf("ERROR: Loop start index must be numeric on line %d\n", line->line_num);
+                    exit(1);
+                }
+            } else {
+                Variable *v = get_var(var_name);
+                if (v) {
+                    if (v->type != VAR_INT && v->type != VAR_BOOL) {
+                        printf("ERROR: Existing loop variable '%s' is not numeric on line %d\n", var_name, line->line_num);
+                        exit(1);
+                    }
+                    start_val = v->int_val;
+                } else {
+                    start_val = 0;
+                }
+            }
+
+            while (isspace((unsigned char)*cursor)) cursor++;
+            if (strncmp(cursor, "to", 2) != 0 || !isspace((unsigned char)cursor[2])) {
+                printf("ERROR: Expected 'to' in iterate loop on line %d\n", line->line_num);
+                exit(1);
+            }
+            cursor += 2;
+
+            char *out_str = NULL;
+            int out_type = VAR_INT;
+            int end_val = evaluate_expression(&cursor, &out_str, &out_type);
+            if (out_str || out_type == VAR_STRING) {
+                printf("ERROR: Loop end index must be numeric on line %d\n", line->line_num);
+                exit(1);
+            }
+
+            if (start_val > end_val) {
+                printf("ERROR: start index greater than end index on line %d\n", line->line_num);
+                exit(1);
+            }
+
+            Variable *v = set_var(var_name);
+            for (int idx_val = start_val; idx_val <= end_val; idx_val++) {
+                v->type = VAR_INT;
+                v->int_val = idx_val;
+                if (v->string_val) {
+                    free(v->string_val);
+                    v->string_val = NULL;
+                }
+                execute_block(block_start, block_end);
+            }
+            i = block_end + 1;
+        }
+        else {
+            execute_line(line->text, line->line_num);
+            i++;
+        }
+    }
+}
+
 int main(int argc, char *argv[]) {
     if (argc < 2) {
         printf("Usage: %s <filename>\n", argv[0]);
@@ -290,94 +570,19 @@ int main(int argc, char *argv[]) {
     buffer[read_bytes] = '\0';
     fclose(file);
 
-    const char *cursor = buffer;
-    Token t;
-    
-    while ((t = getNextToken(&cursor)).type != TOKEN_EOF) {
-        if (t.type == TOKEN_DISPLAY) {
-            char *out_str = NULL;
-            int out_type = VAR_INT;
-            int val = evaluate_expression(&cursor, &out_str, &out_type);
-            if (out_str) {
-                printf("%s\n", out_str);
-                free(out_str);
-            } else if (out_type == VAR_BOOL) {
-                printf("%s\n", val ? "true" : "false");
-            } else {
-                printf("%d\n", val);
-            }
-        } 
-        else if (t.type == TOKEN_PROMPT) {
-            Token var_tok = getNextToken(&cursor);
-            if (var_tok.type == TOKEN_IDENTIFIER) {
-                Variable *v = set_var(var_tok.value);
-                char input[256];
-                if (fgets(input, sizeof(input), stdin)) {
-                    input[strcspn(input, "\r\n")] = 0; // Remove newline
-                    char *endptr;
-                    long lval = strtol(input, &endptr, 10);
-                    if (*endptr == '\0' && input[0] != '\0') {
-                        v->type = VAR_INT;
-                        v->int_val = (int)lval;
-                        if (v->string_val) {
-                            free(v->string_val);
-                            v->string_val = NULL;
-                        }
-                    } else {
-                        v->type = VAR_STRING;
-                        if (v->string_val) free(v->string_val);
-                        v->string_val = strdup(input);
-                    }
-                }
-            } else {
-                printf("ERROR: Expected variable name after prompt\n");
-            }
-            if (var_tok.value) free(var_tok.value);
-        }
-        else if (t.type == TOKEN_IDENTIFIER) {
-            Token next = peekToken(&cursor);
-            if (next.type == TOKEN_COLON) {
-                freeToken(&next);
-                Token colon_consumed = getNextToken(&cursor); // Consume COLON
-                freeToken(&colon_consumed);
-                char *out_str = NULL;
-                int out_type = VAR_INT;
-                int val = evaluate_expression(&cursor, &out_str, &out_type);
-                Variable *v = set_var(t.value);
-                if (out_str) {
-                    v->type = VAR_STRING;
-                    if (v->string_val) {
-                        free(v->string_val);
-                    }
-                    v->string_val = out_str;
-                } else if (out_type == VAR_BOOL) {
-                    v->type = VAR_BOOL;
-                    v->int_val = val;
-                    if (v->string_val) {
-                        free(v->string_val);
-                        v->string_val = NULL;
-                    }
-                } else {
-                    v->type = VAR_INT;
-                    v->int_val = val;
-                    if (v->string_val) {
-                        free(v->string_val);
-                        v->string_val = NULL;
-                    }
-                }
-            } else {
-                freeToken(&next);
-                printf("ERROR: Unexpected identifier '%s'\n", t.value);
-            }
-        }
-        else if (t.type == TOKEN_ERROR) {
-            printf("LEXER ERROR: Unexpected token '%s'\n", t.value ? t.value : "");
-        }
+    parse_lines(buffer);
 
-        freeToken(&t);
+    if (line_count > 0) {
+        execute_block(0, line_count - 1);
     }
 
     free(buffer);
+    for (int i = 0; i < line_count; i++) {
+        free(lines[i].text);
+    }
+    if (lines) {
+        free(lines);
+    }
 
     for (int i = 0; i < var_count; i++) {
         free(symtable[i].name);
