@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <stdarg.h>
+#include <setjmp.h>
 #include "../include/opcodes.h"
 #include "../include/lexer.h"
 
@@ -18,6 +20,42 @@ Variable *symtable = NULL;
 int var_count = 0;
 int var_capacity = 0;
 
+#define MAX_JMP_STACK 64
+jmp_buf jmp_env_stack[MAX_JMP_STACK];
+int jmp_stack_ptr = 0;
+
+char current_error_name[128] = "";
+char current_error_msg[256] = "";
+
+void throw_error(const char *name, const char *fmt, ...) {
+    strcpy(current_error_name, name);
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(current_error_msg, sizeof(current_error_msg), fmt, args);
+    va_end(args);
+
+    if (jmp_stack_ptr > 0) {
+        longjmp(jmp_env_stack[jmp_stack_ptr - 1], 1);
+    } else {
+        printf("ERROR: %s: %s\n", name, current_error_msg);
+        exit(1);
+    }
+}
+
+int is_error_name(const char *name) {
+    if (strcmp(name, "error") == 0) return 1;
+    if (strcmp(name, "MemoryAllocationError") == 0) return 1;
+    if (strcmp(name, "UndefinedVariableError") == 0) return 1;
+    if (strcmp(name, "InvalidOperandError") == 0) return 1;
+    if (strcmp(name, "DivisionByZeroError") == 0) return 1;
+    if (strcmp(name, "IndentationError") == 0) return 1;
+    if (strcmp(name, "LoopIterationError") == 0) return 1;
+    if (strcmp(name, "LoopLimitError") == 0) return 1;
+    if (strcmp(name, "LoopDirectionError") == 0) return 1;
+    if (strcmp(name, "SyntaxError") == 0) return 1;
+    return 0;
+}
+
 Variable* get_var(const char *name) {
     for (int i = 0; i < var_count; i++) {
         if (strcmp(symtable[i].name, name) == 0) return &symtable[i];
@@ -33,8 +71,7 @@ Variable* set_var(const char *name) {
         var_capacity = (var_capacity == 0) ? 100 : var_capacity * 2;
         symtable = realloc(symtable, var_capacity * sizeof(Variable));
         if (!symtable) {
-            printf("ERROR: Memory allocation failed\n");
-            exit(1);
+            throw_error("MemoryAllocationError", "Memory allocation failed");
         }
     }
 
@@ -76,22 +113,19 @@ int evaluate_expression(const char **cursor, char **out_str, int *out_type) {
         acc = atoi(t.value) * sign;
     } else if (t.type == TOKEN_TRUE) {
         if (sign == -1) {
-            printf("ERROR: Invalid operand for unary '-'\n");
-            exit(1);
+            throw_error("InvalidOperandError", "Invalid operand for unary '-'");
         }
         acc = 1;
         *out_type = VAR_BOOL;
     } else if (t.type == TOKEN_FALSE) {
         if (sign == -1) {
-            printf("ERROR: Invalid operand for unary '-'\n");
-            exit(1);
+            throw_error("InvalidOperandError", "Invalid operand for unary '-'");
         }
         acc = 0;
         *out_type = VAR_BOOL;
     } else if (t.type == TOKEN_STRING) {
         if (sign == -1) {
-            printf("ERROR: Invalid operand for unary '-'\n");
-            exit(1);
+            throw_error("InvalidOperandError", "Invalid operand for unary '-'");
         }
         *out_str = strdup(t.value);
         *out_type = VAR_STRING;
@@ -101,27 +135,23 @@ int evaluate_expression(const char **cursor, char **out_str, int *out_type) {
             if (v->type == VAR_INT) acc = v->int_val * sign;
             else if (v->type == VAR_BOOL) {
                 if (sign == -1) {
-                    printf("ERROR: Invalid operand for unary '-'\n");
-                    exit(1);
+                    throw_error("InvalidOperandError", "Invalid operand for unary '-'");
                 }
                 acc = v->int_val;
                 *out_type = VAR_BOOL;
             }
             else {
                 if (sign == -1) {
-                    printf("ERROR: Invalid operand for unary '-'\n");
-                    exit(1);
+                    throw_error("InvalidOperandError", "Invalid operand for unary '-'");
                 }
                 *out_str = strdup(v->string_val);
                 *out_type = VAR_STRING;
             }
         } else {
-            printf("ERROR: Undefined variable '%s'\n", t.value);
-            exit(1);
+            throw_error("UndefinedVariableError", "Undefined variable '%s'", t.value);
         }
     } else {
-        printf("ERROR: Expected value in expression\n");
-        exit(1);
+        throw_error("SyntaxError", "Expected value in expression");
     }
     freeToken(&t);
     
@@ -146,20 +176,17 @@ int evaluate_expression(const char **cursor, char **out_str, int *out_type) {
                 rhs_val = atoi(rhs.value) * rhs_sign;
             } else if (rhs.type == TOKEN_TRUE) {
                 if (rhs_sign == -1) {
-                    printf("ERROR: Invalid operand for unary '-'\n");
-                    exit(1);
+                    throw_error("InvalidOperandError", "Invalid operand for unary '-'");
                 }
                 rhs_val = 1;
             } else if (rhs.type == TOKEN_FALSE) {
                 if (rhs_sign == -1) {
-                    printf("ERROR: Invalid operand for unary '-'\n");
-                    exit(1);
+                    throw_error("InvalidOperandError", "Invalid operand for unary '-'");
                 }
                 rhs_val = 0;
             } else if (rhs.type == TOKEN_STRING) {
                 if (rhs_sign == -1) {
-                    printf("ERROR: Invalid operand for unary '-'\n");
-                    exit(1);
+                    throw_error("InvalidOperandError", "Invalid operand for unary '-'");
                 }
                 rhs_str = strdup(rhs.value);
             } else if (rhs.type == TOKEN_IDENTIFIER) {
@@ -168,25 +195,21 @@ int evaluate_expression(const char **cursor, char **out_str, int *out_type) {
                     if (v->type == VAR_INT) rhs_val = v->int_val * rhs_sign;
                     else if (v->type == VAR_BOOL) {
                         if (rhs_sign == -1) {
-                            printf("ERROR: Invalid operand for unary '-'\n");
-                            exit(1);
+                            throw_error("InvalidOperandError", "Invalid operand for unary '-'");
                         }
                         rhs_val = v->int_val;
                     }
                     else {
                         if (rhs_sign == -1) {
-                            printf("ERROR: Invalid operand for unary '-'\n");
-                            exit(1);
+                            throw_error("InvalidOperandError", "Invalid operand for unary '-'");
                         }
                         rhs_str = strdup(v->string_val);
                     }
                 } else {
-                    printf("ERROR: Undefined variable '%s'\n", rhs.value);
-                    exit(1);
+                    throw_error("UndefinedVariableError", "Undefined variable '%s'", rhs.value);
                 }
             } else {
-                printf("ERROR: Expected value in expression\n");
-                exit(1);
+                throw_error("SyntaxError", "Expected value in expression");
             }
             
             if (op.type == TOKEN_PLUS) {
@@ -224,31 +247,27 @@ int evaluate_expression(const char **cursor, char **out_str, int *out_type) {
                 }
             } else if (op.type == TOKEN_MINUS) {
                 if (rhs_str || (*out_type != VAR_INT && *out_type != VAR_BOOL)) {
-                    printf("ERROR: Invalid operands for operator '-'\n");
-                    exit(1);
+                    throw_error("InvalidOperandError", "Invalid operands for operator '-'");
                 }
                 acc -= rhs_val;
                 *out_type = VAR_INT;
             }
             else if (op.type == TOKEN_STAR) {
                 if (rhs_str || (*out_type != VAR_INT && *out_type != VAR_BOOL)) {
-                    printf("ERROR: Invalid operands for operator '*'\n");
-                    exit(1);
+                    throw_error("InvalidOperandError", "Invalid operands for operator '*'");
                 }
                 acc *= rhs_val;
                 *out_type = VAR_INT;
             }
             else if (op.type == TOKEN_SLASH) {
                 if (rhs_str || (*out_type != VAR_INT && *out_type != VAR_BOOL)) {
-                    printf("ERROR: Invalid operands for operator '/'\n");
-                    exit(1);
+                    throw_error("InvalidOperandError", "Invalid operands for operator '/'");
                 }
                 if (rhs_val != 0) {
                     acc /= rhs_val;
                     *out_type = VAR_INT;
                 } else {
-                    printf("ERROR: Division by zero\n");
-                    exit(1);
+                    throw_error("DivisionByZeroError", "Division by zero");
                 }
             }
             if (rhs_str) free(rhs_str);
@@ -284,8 +303,7 @@ int evaluate_expression(const char **cursor, char **out_str, int *out_type) {
                 if (op.type == TOKEN_EQUAL) cmp_res = 0;
                 else if (op.type == TOKEN_NOT_EQUAL) cmp_res = 1;
                 else {
-                    printf("ERROR: Invalid comparison between string and non-string\n");
-                    exit(1);
+                    throw_error("InvalidOperandError", "Invalid comparison between string and non-string");
                 }
             }
 
@@ -403,8 +421,7 @@ void execute_line(const char *text, int line_num) {
                     }
                 }
             } else {
-                printf("ERROR: Expected variable name after prompt on line %d\n", line_num);
-                exit(1);
+                throw_error("SyntaxError", "Expected variable name after prompt on line %d", line_num);
             }
             if (var_tok.value) free(var_tok.value);
         }
@@ -439,13 +456,11 @@ void execute_line(const char *text, int line_num) {
                 }
             } else {
                 freeToken(&next);
-                printf("ERROR: Unexpected identifier '%s' on line %d\n", t.value, line_num);
-                exit(1);
+                throw_error("SyntaxError", "Unexpected identifier '%s' on line %d", t.value, line_num);
             }
         }
         else if (t.type == TOKEN_ERROR) {
-            printf("LEXER ERROR: Unexpected token '%s' on line %d\n", t.value ? t.value : "", line_num);
-            exit(1);
+            throw_error("SyntaxError", "Unexpected token '%s' on line %d", t.value ? t.value : "", line_num);
         }
         freeToken(&t);
     }
@@ -463,8 +478,7 @@ void execute_block(int start, int end) {
         if (expected_indent == -1) {
             expected_indent = line->indent;
         } else if (line->indent != expected_indent) {
-            printf("ERROR: Indentation error on line %d (expected %d, got %d)\n", line->line_num, expected_indent, line->indent);
-            exit(1);
+            throw_error("IndentationError", "Indentation error on line %d (expected %d, got %d)", line->line_num, expected_indent, line->indent);
         }
 
         if (strncmp(line->text, "loop ", 5) == 0 || strcmp(line->text, "loop") == 0) {
@@ -488,8 +502,7 @@ void execute_block(int start, int end) {
             int out_type = VAR_INT;
             int iters = evaluate_expression(&cursor, &out_str, &out_type);
             if (out_str || out_type == VAR_STRING) {
-                printf("ERROR: Loop iterations must be numeric on line %d\n", line->line_num);
-                exit(1);
+                throw_error("LoopIterationError", "Loop iterations must be numeric on line %d", line->line_num);
             }
 
             for (int k = 0; k < iters; k++) {
@@ -519,8 +532,7 @@ void execute_block(int start, int end) {
             while (isalnum((unsigned char)*cursor) || *cursor == '_') cursor++;
             int id_len = cursor - id_start;
             if (id_len == 0) {
-                printf("ERROR: Expected identifier after iterate on line %d\n", line->line_num);
-                exit(1);
+                throw_error("SyntaxError", "Expected identifier after iterate on line %d", line->line_num);
             }
             char var_name[64];
             strncpy(var_name, id_start, id_len);
@@ -534,15 +546,13 @@ void execute_block(int start, int end) {
                 int out_type = VAR_INT;
                 start_val = evaluate_expression(&cursor, &out_str, &out_type);
                 if (out_str || out_type == VAR_STRING) {
-                    printf("ERROR: Loop start index must be numeric on line %d\n", line->line_num);
-                    exit(1);
+                    throw_error("LoopLimitError", "Loop start index must be numeric on line %d", line->line_num);
                 }
             } else {
                 Variable *v = get_var(var_name);
                 if (v) {
                     if (v->type != VAR_INT && v->type != VAR_BOOL) {
-                        printf("ERROR: Existing loop variable '%s' is not numeric on line %d\n", var_name, line->line_num);
-                        exit(1);
+                        throw_error("LoopLimitError", "Existing loop variable '%s' is not numeric on line %d", var_name, line->line_num);
                     }
                     start_val = v->int_val;
                 } else {
@@ -552,8 +562,7 @@ void execute_block(int start, int end) {
 
             while (isspace((unsigned char)*cursor)) cursor++;
             if (strncmp(cursor, "to", 2) != 0 || !isspace((unsigned char)cursor[2])) {
-                printf("ERROR: Expected 'to' in iterate loop on line %d\n", line->line_num);
-                exit(1);
+                throw_error("SyntaxError", "Expected 'to' in iterate loop on line %d", line->line_num);
             }
             cursor += 2;
 
@@ -561,13 +570,11 @@ void execute_block(int start, int end) {
             int out_type = VAR_INT;
             int end_val = evaluate_expression(&cursor, &out_str, &out_type);
             if (out_str || out_type == VAR_STRING) {
-                printf("ERROR: Loop end index must be numeric on line %d\n", line->line_num);
-                exit(1);
+                throw_error("LoopLimitError", "Loop end index must be numeric on line %d", line->line_num);
             }
 
             if (start_val > end_val) {
-                printf("ERROR: start index greater than end index on line %d\n", line->line_num);
-                exit(1);
+                throw_error("LoopDirectionError", "start index greater than end index on line %d", line->line_num);
             }
 
             Variable *v = set_var(var_name);
@@ -586,8 +593,7 @@ void execute_block(int start, int end) {
             const char *cursor = line->text + 3;
             const char *then_ptr = strstr(cursor, " then");
             if (!then_ptr) {
-                printf("ERROR: Expected 'then' after if condition on line %d\n", line->line_num);
-                exit(1);
+                throw_error("SyntaxError", "Expected 'then' after if condition on line %d", line->line_num);
             }
             int cond_len = then_ptr - cursor;
             char *cond_str = malloc(cond_len + 1);
@@ -599,8 +605,7 @@ void execute_block(int start, int end) {
             int out_type = VAR_INT;
             int cond_val = evaluate_expression(&cond_cursor, &out_str, &out_type);
             if (out_str) {
-                printf("ERROR: Condition must evaluate to a boolean or number on line %d\n", line->line_num);
-                exit(1);
+                throw_error("InvalidOperandError", "Condition must evaluate to a boolean or number on line %d", line->line_num);
             }
             free(cond_str);
 
@@ -656,8 +661,7 @@ void execute_block(int start, int end) {
                         const char *elif_cursor = lookahead->text + 8;
                         const char *elif_then_ptr = strstr(elif_cursor, " then");
                         if (!elif_then_ptr) {
-                            printf("ERROR: Expected 'then' after else if condition on line %d\n", lookahead->line_num);
-                            exit(1);
+                            throw_error("SyntaxError", "Expected 'then' after else if condition on line %d", lookahead->line_num);
                         }
                         int elif_cond_len = elif_then_ptr - elif_cursor;
                         char *elif_cond_str = malloc(elif_cond_len + 1);
@@ -669,8 +673,7 @@ void execute_block(int start, int end) {
                         int elif_out_type = VAR_INT;
                         int elif_cond_val = evaluate_expression(&elif_cond_cursor, &elif_out_str, &elif_out_type);
                         if (elif_out_str) {
-                            printf("ERROR: Condition must evaluate to a boolean or number on line %d\n", lookahead->line_num);
-                            exit(1);
+                            throw_error("InvalidOperandError", "Condition must evaluate to a boolean or number on line %d", lookahead->line_num);
                         }
                         free(elif_cond_str);
 
@@ -731,8 +734,7 @@ void execute_block(int start, int end) {
                 int out_type = VAR_INT;
                 int cond_val = evaluate_expression(&cursor, &out_str, &out_type);
                 if (out_str) {
-                    printf("ERROR: While condition must evaluate to a boolean or number on line %d\n", line->line_num);
-                    exit(1);
+                    throw_error("InvalidOperandError", "While condition must evaluate to a boolean or number on line %d", line->line_num);
                 }
                 if (!cond_val) break;
 
@@ -762,14 +764,95 @@ void execute_block(int start, int end) {
                 int out_type = VAR_INT;
                 int cond_val = evaluate_expression(&cursor, &out_str, &out_type);
                 if (out_str) {
-                    printf("ERROR: Until condition must evaluate to a boolean or number on line %d\n", line->line_num);
-                    exit(1);
+                    throw_error("InvalidOperandError", "Until condition must evaluate to a boolean or number on line %d", line->line_num);
                 }
                 if (cond_val) break;
 
                 execute_block(block_start, block_end);
             }
             i = block_end + 1;
+        }
+        else if (strcmp(line->text, "do") == 0) {
+            int do_start = i + 1;
+            int do_end = i;
+            while (do_end + 1 <= end) {
+                Line *next = &lines[do_end + 1];
+                if (next->text[0] == '\0' || next->text[0] == '!') {
+                    do_end++;
+                    continue;
+                }
+                if (next->indent > line->indent) {
+                    do_end++;
+                } else {
+                    break;
+                }
+            }
+
+            int unless_idx = do_end + 1;
+            while (unless_idx <= end) {
+                Line *next = &lines[unless_idx];
+                if (next->text[0] == '\0' || next->text[0] == '!') {
+                    unless_idx++;
+                    continue;
+                }
+                break;
+            }
+
+            if (unless_idx > end || lines[unless_idx].indent != line->indent || strncmp(lines[unless_idx].text, "unless ", 7) != 0) {
+                throw_error("SyntaxError", "Expected 'unless' block matching 'do' on line %d", line->line_num);
+            }
+
+            Line *unless_line = &lines[unless_idx];
+            const char *unless_expr = unless_line->text + 7;
+
+            int unless_start = unless_idx + 1;
+            int unless_end = unless_idx;
+            while (unless_end + 1 <= end) {
+                Line *next = &lines[unless_end + 1];
+                if (next->text[0] == '\0' || next->text[0] == '!') {
+                    unless_end++;
+                    continue;
+                }
+                if (next->indent > unless_line->indent) {
+                    unless_end++;
+                } else {
+                    break;
+                }
+            }
+
+            if (is_error_name(unless_expr)) {
+                if (jmp_stack_ptr >= MAX_JMP_STACK) {
+                    throw_error("SystemError", "Jump stack overflow on line %d", line->line_num);
+                }
+                if (setjmp(jmp_env_stack[jmp_stack_ptr++]) == 0) {
+                    execute_block(do_start, do_end);
+                    jmp_stack_ptr--;
+                } else {
+                    jmp_stack_ptr--;
+                    int catch_all = (strcmp(unless_expr, "error") == 0);
+                    int catch_spec = (strcmp(unless_expr, current_error_name) == 0);
+                    if (catch_all || catch_spec) {
+                        execute_block(unless_start, unless_end);
+                    } else {
+                        throw_error(current_error_name, "%s", current_error_msg);
+                    }
+                }
+            } else {
+                const char *expr_cursor = unless_expr;
+                char *out_str = NULL;
+                int out_type = VAR_INT;
+                int cond_val = evaluate_expression(&expr_cursor, &out_str, &out_type);
+                if (out_str) {
+                    throw_error("InvalidOperandError", "Condition must evaluate to a boolean or number on line %d", unless_line->line_num);
+                }
+                if (cond_val) {
+                    execute_block(unless_start, unless_end);
+                } else {
+                    execute_block(do_start, do_end);
+                }
+            }
+
+            i = unless_end + 1;
         }
         else {
             execute_line(line->text, line->line_num);

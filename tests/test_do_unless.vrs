@@ -1,0 +1,27 @@
+! VerScript Do-Unless Exception and Conditionals Test
+
+display "--- Test do-unless (Exception Handling) ---"
+do
+  display "in do block (will divide by zero)"
+  x : 10 / 0
+unless DivisionByZeroError
+  display "caught division by zero! (correct)"
+
+do
+  display "in do block (will trigger undefined variable)"
+  display missing_var
+unless error
+  display "caught general error! (correct)"
+
+display "--- Test do-unless (Conditional Execution) ---"
+cond : true
+do
+  display "do runs (cond is true, so this shouldn't run)"
+unless cond
+  display "unless runs (cond is true, correct)"
+
+cond2 : false
+do
+  display "do runs (cond2 is false, correct)"
+unless cond2
+  display "unless runs (cond2 is false, so this shouldn't run)"
