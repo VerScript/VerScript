@@ -1,0 +1,26 @@
+! Test unless internal and external modifiers
+
+display "--- Test 1: unless internal [bool] ---"
+flag : false
+do
+  display "statement 1 inside do"
+  display "statement 2 inside do (will make flag true)"
+  flag : true
+  display "statement 3 inside do (should NOT run)"
+unless internal flag
+  display "unless block runs! (correct)"
+
+display "--- Test 2: unless external [bool] ---"
+flag2 : false
+do
+  display "statement 1 inside do (external)"
+  flag2 : true
+  display "statement 2 inside do (external - should run since external)"
+unless external flag2
+  display "unless block should NOT run since flag2 was false initially"
+
+display "--- Test 3: catch DivisionByZeroError and display error keyword ---"
+do
+  temp : 5 / 0
+unless DivisionByZeroError
+  display "caught error: " + error

@@ -24,8 +24,20 @@ int var_capacity = 0;
 jmp_buf jmp_env_stack[MAX_JMP_STACK];
 int jmp_stack_ptr = 0;
 
+#define MODE_DEFAULT 0
+#define MODE_INTERNAL 1
+#define MODE_EXTERNAL 2
+
 char current_error_name[128] = "";
 char current_error_msg[256] = "";
+
+typedef struct {
+    int active;
+    const char *expr;
+    int triggered;
+} WatchCondition;
+
+WatchCondition active_watch = {0, NULL, 0};
 
 void throw_error(const char *name, const char *fmt, ...) {
     strcpy(current_error_name, name);
@@ -470,6 +482,10 @@ void execute_block(int start, int end) {
     int expected_indent = -1;
     int i = start;
     while (i <= end) {
+        if (active_watch.active && active_watch.triggered) {
+            break;
+        }
+
         Line *line = &lines[i];
         if (line->text[0] == '\0' || line->text[0] == '!') {
             i++;
@@ -507,6 +523,7 @@ void execute_block(int start, int end) {
 
             for (int k = 0; k < iters; k++) {
                 execute_block(block_start, block_end);
+                if (active_watch.active && active_watch.triggered) break;
             }
             i = block_end + 1;
         }
@@ -586,6 +603,7 @@ void execute_block(int start, int end) {
                     v->string_val = NULL;
                 }
                 execute_block(block_start, block_end);
+                if (active_watch.active && active_watch.triggered) break;
             }
             i = block_end + 1;
         }
@@ -710,6 +728,10 @@ void execute_block(int start, int end) {
                     break;
                 }
             }
+            if (active_watch.active && active_watch.triggered) {
+                i = current_idx;
+                break;
+            }
             i = current_idx;
         }
         else if (strncmp(line->text, "while ", 6) == 0) {
@@ -739,6 +761,7 @@ void execute_block(int start, int end) {
                 if (!cond_val) break;
 
                 execute_block(block_start, block_end);
+                if (active_watch.active && active_watch.triggered) break;
             }
             i = block_end + 1;
         }
@@ -769,6 +792,7 @@ void execute_block(int start, int end) {
                 if (cond_val) break;
 
                 execute_block(block_start, block_end);
+                if (active_watch.active && active_watch.triggered) break;
             }
             i = block_end + 1;
         }
@@ -803,7 +827,19 @@ void execute_block(int start, int end) {
             }
 
             Line *unless_line = &lines[unless_idx];
-            const char *unless_expr = unless_line->text + 7;
+            const char *unless_cursor = unless_line->text + 7;
+
+            // Parse mode
+            int mode = MODE_DEFAULT;
+            if (strncmp(unless_cursor, "internal ", 9) == 0) {
+                mode = MODE_INTERNAL;
+                unless_cursor += 9;
+            } else if (strncmp(unless_cursor, "external ", 9) == 0) {
+                mode = MODE_EXTERNAL;
+                unless_cursor += 9;
+            }
+
+            const char *unless_expr = unless_cursor;
 
             int unless_start = unless_idx + 1;
             int unless_end = unless_idx;
@@ -821,9 +857,15 @@ void execute_block(int start, int end) {
             }
 
             if (is_error_name(unless_expr)) {
+                // If mode is default, errors default to internal
+                if (mode == MODE_DEFAULT) {
+                    mode = MODE_INTERNAL;
+                }
+
                 if (jmp_stack_ptr >= MAX_JMP_STACK) {
                     throw_error("SystemError", "Jump stack overflow on line %d", line->line_num);
                 }
+
                 if (setjmp(jmp_env_stack[jmp_stack_ptr++]) == 0) {
                     execute_block(do_start, do_end);
                     jmp_stack_ptr--;
@@ -832,23 +874,63 @@ void execute_block(int start, int end) {
                     int catch_all = (strcmp(unless_expr, "error") == 0);
                     int catch_spec = (strcmp(unless_expr, current_error_name) == 0);
                     if (catch_all || catch_spec) {
+                        Variable *err_var = set_var("error");
+                        err_var->type = VAR_STRING;
+                        if (err_var->string_val) free(err_var->string_val);
+                        err_var->string_val = strdup(current_error_name);
+
                         execute_block(unless_start, unless_end);
                     } else {
                         throw_error(current_error_name, "%s", current_error_msg);
                     }
                 }
             } else {
-                const char *expr_cursor = unless_expr;
-                char *out_str = NULL;
-                int out_type = VAR_INT;
-                int cond_val = evaluate_expression(&expr_cursor, &out_str, &out_type);
-                if (out_str) {
-                    throw_error("InvalidOperandError", "Condition must evaluate to a boolean or number on line %d", unless_line->line_num);
+                // Bools default to external
+                if (mode == MODE_DEFAULT) {
+                    mode = MODE_EXTERNAL;
                 }
-                if (cond_val) {
-                    execute_block(unless_start, unless_end);
+
+                if (mode == MODE_EXTERNAL) {
+                    // Evaluate condition beforehand
+                    const char *expr_cursor = unless_expr;
+                    char *out_str = NULL;
+                    int out_type = VAR_INT;
+                    int cond_val = evaluate_expression(&expr_cursor, &out_str, &out_type);
+                    if (out_str) {
+                        throw_error("InvalidOperandError", "Condition must evaluate to a boolean or number on line %d", unless_line->line_num);
+                    }
+                    if (cond_val) {
+                        execute_block(unless_start, unless_end);
+                    } else {
+                        execute_block(do_start, do_end);
+                    }
                 } else {
-                    execute_block(do_start, do_end);
+                    // Mode is internal: checks before executing, and then after every line
+                    const char *expr_cursor = unless_expr;
+                    char *out_str = NULL;
+                    int out_type = VAR_INT;
+                    int start_val = evaluate_expression(&expr_cursor, &out_str, &out_type);
+                    if (out_str) {
+                        throw_error("InvalidOperandError", "Condition must evaluate to a boolean or number on line %d", unless_line->line_num);
+                    }
+
+                    if (start_val) {
+                        execute_block(unless_start, unless_end);
+                    } else {
+                        WatchCondition prev_watch = active_watch;
+                        active_watch.active = 1;
+                        active_watch.expr = unless_expr;
+                        active_watch.triggered = 0;
+
+                        execute_block(do_start, do_end);
+
+                        int triggered = active_watch.triggered;
+                        active_watch = prev_watch;
+
+                        if (triggered) {
+                            execute_block(unless_start, unless_end);
+                        }
+                    }
                 }
             }
 
@@ -856,6 +938,19 @@ void execute_block(int start, int end) {
         }
         else {
             execute_line(line->text, line->line_num);
+            if (active_watch.active) {
+                const char *cursor = active_watch.expr;
+                char *out_str = NULL;
+                int out_type = VAR_INT;
+                int val = evaluate_expression(&cursor, &out_str, &out_type);
+                if (out_str) {
+                    throw_error("InvalidOperandError", "Watch condition must evaluate to a boolean or number on line %d", line->line_num);
+                }
+                if (val) {
+                    active_watch.triggered = 1;
+                    break;
+                }
+            }
             i++;
         }
     }
