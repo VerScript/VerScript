@@ -1,0 +1,49 @@
+! Test suite for System Operators and Throw statement
+
+display "=== TEST 1: SuppressErrors block ==="
+SuppressErrors
+  display "Evaluating division by zero..."
+  val : 10 / 0
+  display "Skipped division by zero error successfully!"
+  
+  display "Accessing undefined variable..."
+  display missing_variable
+  display "Skipped undefined variable successfully!"
+
+display "=== TEST 2: throw statement ==="
+do
+  display "Throwing DivisionByZeroError..."
+  throw DivisionByZeroError
+unless DivisionByZeroError
+  display "Caught user-thrown: " + error
+
+display "=== TEST 3: throw invalid error name ==="
+do
+  display "Throwing UnregisteredError..."
+  throw UnregisteredError
+unless SyntaxError
+  display "Caught invalid error exception: " + error
+
+display "=== TEST 4: rethrow (throw error) ==="
+do
+  do
+    throw InvalidOperandError
+  unless InvalidOperandError
+    display "Caught inner exception. Rethrowing..."
+    throw error
+unless InvalidOperandError
+  display "Successfully caught rethrown outer exception: " + error
+
+display "=== TEST 5: CriticalErrors ==="
+CriticalErrors
+  display "Critical mode: evaluating division by zero (should be skipped)..."
+  x : 10 / 0
+  display "Division by zero skipped!"
+
+display "=== TEST 6: ForceErrors ==="
+do
+  ForceErrors
+    display "Force mode: throwing division by zero inside do-unless (should CRASH, bypassing unless)..."
+    val2 : 10 / 0
+unless DivisionByZeroError
+  display "This should NOT print!"

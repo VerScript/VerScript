@@ -31,6 +31,15 @@ int jmp_stack_ptr = 0;
 char current_error_name[128] = "";
 char current_error_msg[256] = "";
 
+#define ERR_MODE_NORMAL 0
+#define ERR_MODE_FORCE 1
+#define ERR_MODE_CRITICAL 2
+#define ERR_MODE_SUPPRESS 3
+
+int error_mode = ERR_MODE_NORMAL;
+jmp_buf suppress_jmp_env;
+int suppress_jmp_active = 0;
+
 typedef struct {
     int active;
     const char *expr;
@@ -39,12 +48,39 @@ typedef struct {
 
 WatchCondition active_watch = {0, NULL, 0};
 
+int is_critical_error(const char *name) {
+    if (strcmp(name, "MemoryAllocationError") == 0) return 1;
+    if (strcmp(name, "SystemError") == 0) return 1;
+    if (strcmp(name, "SyntaxError") == 0) return 1;
+    if (strcmp(name, "IndentationError") == 0) return 1;
+    return 0;
+}
+
 void throw_error(const char *name, const char *fmt, ...) {
     strcpy(current_error_name, name);
     va_list args;
     va_start(args, fmt);
     vsnprintf(current_error_msg, sizeof(current_error_msg), fmt, args);
     va_end(args);
+
+    if (error_mode == ERR_MODE_FORCE) {
+        printf("ERROR: %s: %s\n", name, current_error_msg);
+        exit(1);
+    }
+
+    int is_crit = is_critical_error(name);
+    int suppress = 0;
+    if (error_mode == ERR_MODE_SUPPRESS) {
+        suppress = 1;
+    } else if (error_mode == ERR_MODE_CRITICAL && !is_crit) {
+        suppress = 1;
+    }
+
+    if (suppress) {
+        if (suppress_jmp_active) {
+            longjmp(suppress_jmp_env, 1);
+        }
+    }
 
     if (jmp_stack_ptr > 0) {
         longjmp(jmp_env_stack[jmp_stack_ptr - 1], 1);
@@ -65,6 +101,9 @@ int is_error_name(const char *name) {
     if (strcmp(name, "LoopLimitError") == 0) return 1;
     if (strcmp(name, "LoopDirectionError") == 0) return 1;
     if (strcmp(name, "SyntaxError") == 0) return 1;
+    if (strcmp(name, "RuntimeError") == 0) return 1;
+    if (strcmp(name, "InvalidErrorNameError") == 0) return 1;
+    if (strcmp(name, "SystemError") == 0) return 1;
     return 0;
 }
 
@@ -437,6 +476,25 @@ void execute_line(const char *text, int line_num) {
             }
             if (var_tok.value) free(var_tok.value);
         }
+        else if (t.type == TOKEN_THROW) {
+            Token err_tok = getNextToken(&cursor);
+            if (err_tok.type == TOKEN_IDENTIFIER) {
+                if (strcmp(err_tok.value, "error") == 0) {
+                    if (current_error_name[0] == '\0') {
+                        throw_error("RuntimeError", "No error is currently active to rethrow on line %d", line_num);
+                    } else {
+                        throw_error(current_error_name, "%s", current_error_msg);
+                    }
+                } else if (is_error_name(err_tok.value)) {
+                    throw_error(err_tok.value, "User thrown error");
+                } else {
+                    throw_error("SyntaxError", "Invalid error: %s error on line %d", err_tok.value, line_num);
+                }
+            } else {
+                throw_error("SyntaxError", "Expected error name after throw on line %d", line_num);
+            }
+            if (err_tok.value) free(err_tok.value);
+        }
         else if (t.type == TOKEN_IDENTIFIER) {
             Token next = peekToken(&cursor);
             if (next.type == TOKEN_COLON) {
@@ -497,7 +555,13 @@ void execute_block(int start, int end) {
             throw_error("IndentationError", "Indentation error on line %d (expected %d, got %d)", line->line_num, expected_indent, line->indent);
         }
 
-        if (strncmp(line->text, "loop ", 5) == 0 || strcmp(line->text, "loop") == 0) {
+        int prev_suppress_active = suppress_jmp_active;
+        jmp_buf prev_suppress_env;
+        memcpy(prev_suppress_env, suppress_jmp_env, sizeof(jmp_buf));
+
+        suppress_jmp_active = 1;
+        if (setjmp(suppress_jmp_env) == 0) {
+            if (strncmp(line->text, "loop ", 5) == 0 || strcmp(line->text, "loop") == 0) {
             int block_start = i + 1;
             int block_end = i;
             while (block_end + 1 <= end) {
@@ -936,6 +1000,69 @@ void execute_block(int start, int end) {
 
             i = unless_end + 1;
         }
+        else if (strcmp(line->text, "ForceErrors") == 0) {
+            int block_start = i + 1;
+            int block_end = i;
+            while (block_end + 1 <= end) {
+                Line *next = &lines[block_end + 1];
+                if (next->text[0] == '\0' || next->text[0] == '!') {
+                    block_end++;
+                    continue;
+                }
+                if (next->indent > line->indent) {
+                    block_end++;
+                } else {
+                    break;
+                }
+            }
+            int prev_mode = error_mode;
+            error_mode = ERR_MODE_FORCE;
+            execute_block(block_start, block_end);
+            error_mode = prev_mode;
+            i = block_end + 1;
+        }
+        else if (strcmp(line->text, "CriticalErrors") == 0) {
+            int block_start = i + 1;
+            int block_end = i;
+            while (block_end + 1 <= end) {
+                Line *next = &lines[block_end + 1];
+                if (next->text[0] == '\0' || next->text[0] == '!') {
+                    block_end++;
+                    continue;
+                }
+                if (next->indent > line->indent) {
+                    block_end++;
+                } else {
+                    break;
+                }
+            }
+            int prev_mode = error_mode;
+            error_mode = ERR_MODE_CRITICAL;
+            execute_block(block_start, block_end);
+            error_mode = prev_mode;
+            i = block_end + 1;
+        }
+        else if (strcmp(line->text, "SuppressErrors") == 0) {
+            int block_start = i + 1;
+            int block_end = i;
+            while (block_end + 1 <= end) {
+                Line *next = &lines[block_end + 1];
+                if (next->text[0] == '\0' || next->text[0] == '!') {
+                    block_end++;
+                    continue;
+                }
+                if (next->indent > line->indent) {
+                    block_end++;
+                } else {
+                    break;
+                }
+            }
+            int prev_mode = error_mode;
+            error_mode = ERR_MODE_SUPPRESS;
+            execute_block(block_start, block_end);
+            error_mode = prev_mode;
+            i = block_end + 1;
+        }
         else {
             execute_line(line->text, line->line_num);
             if (active_watch.active) {
@@ -953,6 +1080,67 @@ void execute_block(int start, int end) {
             }
             i++;
         }
+    } else {
+        // Suppressed error occurred. Skip statement or block.
+        int block_end = i;
+        if (strncmp(line->text, "loop ", 5) == 0 || strcmp(line->text, "loop") == 0 ||
+            strncmp(line->text, "iterate ", 8) == 0 ||
+            strncmp(line->text, "if ", 3) == 0 ||
+            strncmp(line->text, "while ", 6) == 0 ||
+            strncmp(line->text, "until ", 6) == 0 ||
+            strcmp(line->text, "do") == 0 ||
+            strcmp(line->text, "ForceErrors") == 0 ||
+            strcmp(line->text, "CriticalErrors") == 0 ||
+            strcmp(line->text, "SuppressErrors") == 0) {
+
+            while (block_end + 1 <= end) {
+                Line *next = &lines[block_end + 1];
+                if (next->text[0] == '\0' || next->text[0] == '!') {
+                    block_end++;
+                    continue;
+                }
+                if (next->indent > line->indent) {
+                    block_end++;
+                } else {
+                    break;
+                }
+            }
+
+            if (strcmp(line->text, "do") == 0) {
+                int unless_idx = block_end + 1;
+                while (unless_idx <= end) {
+                    Line *next = &lines[unless_idx];
+                    if (next->text[0] == '\0' || next->text[0] == '!') {
+                        unless_idx++;
+                        continue;
+                    }
+                    break;
+                }
+                if (unless_idx <= end && lines[unless_idx].indent == line->indent && strncmp(lines[unless_idx].text, "unless ", 7) == 0) {
+                    int unless_end = unless_idx;
+                    while (unless_end + 1 <= end) {
+                        Line *next = &lines[unless_end + 1];
+                        if (next->text[0] == '\0' || next->text[0] == '!') {
+                            unless_end++;
+                            continue;
+                        }
+                        if (next->indent > lines[unless_idx].indent) {
+                            unless_end++;
+                        } else {
+                            break;
+                        }
+                    }
+                    block_end = unless_end;
+                }
+            }
+            i = block_end + 1;
+        } else {
+            i++;
+        }
+    }
+
+    suppress_jmp_active = prev_suppress_active;
+    memcpy(suppress_jmp_env, prev_suppress_env, sizeof(jmp_buf));
     }
 }
 

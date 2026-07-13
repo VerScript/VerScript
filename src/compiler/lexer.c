@@ -84,6 +84,10 @@ Token getNextToken(const char **cursor) {
             token.type = TOKEN_UNTIL;
             return token;
         }
+        if (len == 5 && strncmp(start, "throw", 5) == 0) {
+            token.type = TOKEN_THROW;
+            return token;
+        }
 
         token.type = TOKEN_IDENTIFIER;
         token.value = malloc(len + 1);
