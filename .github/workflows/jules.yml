@@ -19,9 +19,9 @@ jobs:
         uses: google-labs-code/jules-action@main
         with:
           jules_api_key: ${{ secrets.JULES_API_KEY }}
-          prompt: |
+                    prompt: |
             You are a daily automated software assistant. Scan the entire repository for bugs, security vulnerabilities, or code improvements.
             - If any bugs are found: provide code solutions and explain the fixes.
-            - If no bugs are found: scan for vulnerabilities and possible updates.
-            - You MUST always create a Pull Request with your findings, even if there are no code updates or differences (e.g. modify README.md, AGENTS.md, or add a summary of findings to a log/text file).
+            - If no bugs or security/code improvements are found: do not modify any files with logs or findings. Instead, just create an empty Pull Request (with no file changes/empty commit) with the subject "Jules: Daily Run".
+            - Do not create or update any daily run findings log files.
             - The subject of the Pull Request MUST be "Jules: Daily Run".

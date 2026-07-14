@@ -1,4 +1,0 @@
-Jules Daily Run - Fixed uninitialized variable issues, text reading EOF bugs, and prompt memory leak + CRLF formatting handling.
-Jules Daily Run - Added unary minus support, string concatenation logic, and ftell negative return value check.
-Jules Daily Run - Fixed unary minus support for strings and booleans, handled undefined RHS variables, and corrected boolean arithmetic type evaluation.
-Jules Daily Run - Added missing exit on LHS expression parsing, enabled unary minus support for RHS in binary operations, and prevented unary minus execution on strings and booleans for RHS.
