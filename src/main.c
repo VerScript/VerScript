@@ -108,6 +108,35 @@ int is_error_name(const char *name) {
 }
 
 Variable* get_var(const char *name) {
+    if (strcmp(name, "error") == 0) {
+        Variable *v = NULL;
+        for (int i = 0; i < var_count; i++) {
+            if (strcmp(symtable[i].name, "error") == 0) {
+                v = &symtable[i];
+                break;
+            }
+        }
+        if (!v) {
+            if (var_count >= var_capacity) {
+                var_capacity = (var_capacity == 0) ? 100 : var_capacity * 2;
+                symtable = realloc(symtable, var_capacity * sizeof(Variable));
+                if (!symtable) {
+                    printf("ERROR: MemoryAllocationError: Memory allocation failed\n");
+                    exit(1);
+                }
+            }
+            v = &symtable[var_count++];
+            v->name = strdup("error");
+            v->type = VAR_STRING;
+            v->int_val = 0;
+            v->string_val = strdup(current_error_name);
+        } else {
+            v->type = VAR_STRING;
+            if (v->string_val) free(v->string_val);
+            v->string_val = strdup(current_error_name);
+        }
+        return v;
+    }
     for (int i = 0; i < var_count; i++) {
         if (strcmp(symtable[i].name, name) == 0) return &symtable[i];
     }
