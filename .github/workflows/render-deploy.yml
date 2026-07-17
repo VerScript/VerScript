@@ -1,0 +1,13 @@
+name: Trigger Render Deployment
+
+on:
+  push:
+    branches:
+      - '**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render Webhook
+        run: curl -s "https://api.render.com/deploy/srv-d957vs0js32c73fi8kjg?key=${{ secrets.RENDER_DEPLOY_KEY }}"

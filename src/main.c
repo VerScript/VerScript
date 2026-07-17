@@ -188,7 +188,7 @@ int evaluate_expression(const char **cursor, char **out_str, int *out_type) {
         freeToken(&t);
         t = getNextToken(cursor);
     }
-    
+
     if (t.type == TOKEN_NUMBER) {
         acc = atoi(t.value) * sign;
     } else if (t.type == TOKEN_TRUE) {
@@ -234,7 +234,7 @@ int evaluate_expression(const char **cursor, char **out_str, int *out_type) {
         throw_error("SyntaxError", "Expected value in expression");
     }
     freeToken(&t);
-    
+
     while (1) {
         Token op = peekToken(cursor);
         if (op.type == TOKEN_PLUS || op.type == TOKEN_MINUS || op.type == TOKEN_STAR || op.type == TOKEN_SLASH) {
@@ -291,7 +291,7 @@ int evaluate_expression(const char **cursor, char **out_str, int *out_type) {
             } else {
                 throw_error("SyntaxError", "Expected value in expression");
             }
-            
+
             if (op.type == TOKEN_PLUS) {
                 if (*out_str != NULL && rhs_str != NULL) {
                     size_t len1 = strlen(*out_str);
@@ -403,7 +403,7 @@ int evaluate_expression(const char **cursor, char **out_str, int *out_type) {
             break;
         }
     }
-    
+
     return acc;
 }
 
@@ -423,12 +423,12 @@ void parse_lines(const char *buffer) {
     while (*p != '\0') {
         const char *eol = p;
         while (*eol != '\n' && *eol != '\0') eol++;
-        
+
         int raw_len = eol - p;
         char *raw_line = malloc(raw_len + 1);
         memcpy(raw_line, p, raw_len);
         raw_line[raw_len] = '\0';
-        
+
         int indent = 0;
         char *src = raw_line;
         while (*src == ' ' || *src == '\t') {
@@ -436,14 +436,14 @@ void parse_lines(const char *buffer) {
             else indent += 4;
             src++;
         }
-        
+
         char *code = strdup(src);
         int len = strlen(code);
         while (len > 0 && isspace((unsigned char)code[len - 1])) {
             code[len - 1] = '\0';
             len--;
         }
-        
+
         if (line_count >= line_capacity) {
             line_capacity = (line_capacity == 0) ? 100 : line_capacity * 2;
             lines = realloc(lines, line_capacity * sizeof(Line));
@@ -452,9 +452,9 @@ void parse_lines(const char *buffer) {
         lines[line_count].indent = indent;
         lines[line_count].line_num = line_num;
         line_count++;
-        
+
         free(raw_line);
-        
+
         if (*eol == '\n') p = eol + 1;
         else p = eol;
         line_num++;
@@ -477,7 +477,7 @@ void execute_line(const char *text, int line_num) {
             } else {
                 printf("%d\n", val);
             }
-        } 
+        }
         else if (t.type == TOKEN_PROMPT) {
             Token var_tok = getNextToken(&cursor);
             if (var_tok.type == TOKEN_IDENTIFIER) {
@@ -614,7 +614,26 @@ void execute_block(int start, int end) {
                 throw_error("LoopIterationError", "Loop iterations must be numeric on line %d", line->line_num);
             }
 
-            for (int k = 0; k < iters; k++) {
+            int step_val = 1;
+            while (isspace((unsigned char)*cursor)) cursor++;
+            if (strncmp(cursor, "step", 4) == 0 && (isspace((unsigned char)cursor[4]) || cursor[4] == '\0')) {
+                cursor += 4;
+                char *step_out_str = NULL;
+                int step_out_type = VAR_INT;
+                step_val = evaluate_expression(&cursor, &step_out_str, &step_out_type);
+                if (step_out_str || step_out_type == VAR_STRING) {
+                    throw_error("LoopStepError", "Loop step must be numeric on line %d", line->line_num);
+                }
+            }
+
+            if (iters > 0 && step_val > iters) {
+                throw_error("LoopStepError", "Loop step larger than loop size on line %d", line->line_num);
+            }
+            if (step_val <= 0) {
+                throw_error("LoopStepError", "Loop step must be greater than 0 on line %d", line->line_num);
+            }
+
+            for (int k = 0; k < iters; k += step_val) {
                 execute_block(block_start, block_end);
                 if (active_watch.active && active_watch.triggered) break;
             }
@@ -683,12 +702,31 @@ void execute_block(int start, int end) {
                 throw_error("LoopLimitError", "Loop end index must be numeric on line %d", line->line_num);
             }
 
+            int step_val = 1;
+            while (isspace((unsigned char)*cursor)) cursor++;
+            if (strncmp(cursor, "step", 4) == 0 && (isspace((unsigned char)cursor[4]) || cursor[4] == '\0')) {
+                cursor += 4;
+                char *step_out_str = NULL;
+                int step_out_type = VAR_INT;
+                step_val = evaluate_expression(&cursor, &step_out_str, &step_out_type);
+                if (step_out_str || step_out_type == VAR_STRING) {
+                    throw_error("LoopStepError", "Loop step must be numeric on line %d", line->line_num);
+                }
+            }
+
             if (start_val > end_val) {
                 throw_error("LoopDirectionError", "start index greater than end index on line %d", line->line_num);
             }
 
+            if ((end_val - start_val + 1) > 0 && step_val > (end_val - start_val + 1)) {
+                throw_error("LoopStepError", "Loop step larger than loop size on line %d", line->line_num);
+            }
+            if (step_val <= 0) {
+                throw_error("LoopStepError", "Loop step must be greater than 0 on line %d", line->line_num);
+            }
+
             Variable *v = set_var(var_name);
-            for (int idx_val = start_val; idx_val <= end_val; idx_val++) {
+            for (int idx_val = start_val; idx_val <= end_val; idx_val += step_val) {
                 v->type = VAR_INT;
                 v->int_val = idx_val;
                 if (v->string_val) {
@@ -843,18 +881,52 @@ void execute_block(int start, int end) {
                 }
             }
 
+            int step_val = 1;
+            const char *cursor = line->text + 6;
+            const char *step_ptr = strstr(cursor, " step");
+            if (step_ptr) {
+                if (isspace(*(step_ptr - 1)) && (isspace(*(step_ptr + 5)) || *(step_ptr + 5) == '\0')) {
+                    const char *step_cursor = step_ptr + 6;
+                    char *step_out_str = NULL;
+                    int step_out_type = VAR_INT;
+                    step_val = evaluate_expression(&step_cursor, &step_out_str, &step_out_type);
+                    if (step_out_str || step_out_type == VAR_STRING) {
+                        throw_error("LoopStepError", "Loop step must be numeric on line %d", line->line_num);
+                    }
+                    if (step_val <= 0) {
+                        throw_error("LoopStepError", "Loop step must be greater than 0 on line %d", line->line_num);
+                    }
+                } else {
+                    step_ptr = NULL;
+                }
+            }
+
+            int cond_len = step_ptr ? (int)(step_ptr - cursor) : (int)strlen(cursor);
+            char *cond_buf = malloc(cond_len + 1);
+            strncpy(cond_buf, cursor, cond_len);
+            cond_buf[cond_len] = '\0';
+
+            int iter_count = 0;
             while (1) {
-                const char *cursor = line->text + 6;
+                const char *eval_cursor = cond_buf;
                 char *out_str = NULL;
                 int out_type = VAR_INT;
-                int cond_val = evaluate_expression(&cursor, &out_str, &out_type);
+                int cond_val = evaluate_expression(&eval_cursor, &out_str, &out_type);
                 if (out_str) {
+                    free(cond_buf);
                     throw_error("InvalidOperandError", "While condition must evaluate to a boolean or number on line %d", line->line_num);
                 }
                 if (!cond_val) break;
 
-                execute_block(block_start, block_end);
+                if (iter_count % step_val == 0) {
+                    execute_block(block_start, block_end);
+                }
+                iter_count++;
                 if (active_watch.active && active_watch.triggered) break;
+            }
+            free(cond_buf);
+            if (step_val > iter_count && iter_count > 0) {
+                throw_error("LoopStepError", "Loop step larger than loop size on line %d", line->line_num);
             }
             i = block_end + 1;
         }
@@ -874,18 +946,52 @@ void execute_block(int start, int end) {
                 }
             }
 
+            int step_val = 1;
+            const char *cursor = line->text + 6;
+            const char *step_ptr = strstr(cursor, " step");
+            if (step_ptr) {
+                if (isspace(*(step_ptr - 1)) && (isspace(*(step_ptr + 5)) || *(step_ptr + 5) == '\0')) {
+                    const char *step_cursor = step_ptr + 6;
+                    char *step_out_str = NULL;
+                    int step_out_type = VAR_INT;
+                    step_val = evaluate_expression(&step_cursor, &step_out_str, &step_out_type);
+                    if (step_out_str || step_out_type == VAR_STRING) {
+                        throw_error("LoopStepError", "Loop step must be numeric on line %d", line->line_num);
+                    }
+                    if (step_val <= 0) {
+                        throw_error("LoopStepError", "Loop step must be greater than 0 on line %d", line->line_num);
+                    }
+                } else {
+                    step_ptr = NULL;
+                }
+            }
+
+            int cond_len = step_ptr ? (int)(step_ptr - cursor) : (int)strlen(cursor);
+            char *cond_buf = malloc(cond_len + 1);
+            strncpy(cond_buf, cursor, cond_len);
+            cond_buf[cond_len] = '\0';
+
+            int iter_count = 0;
             while (1) {
-                const char *cursor = line->text + 6;
+                const char *eval_cursor = cond_buf;
                 char *out_str = NULL;
                 int out_type = VAR_INT;
-                int cond_val = evaluate_expression(&cursor, &out_str, &out_type);
+                int cond_val = evaluate_expression(&eval_cursor, &out_str, &out_type);
                 if (out_str) {
+                    free(cond_buf);
                     throw_error("InvalidOperandError", "Until condition must evaluate to a boolean or number on line %d", line->line_num);
                 }
                 if (cond_val) break;
 
-                execute_block(block_start, block_end);
+                if (iter_count % step_val == 0) {
+                    execute_block(block_start, block_end);
+                }
+                iter_count++;
                 if (active_watch.active && active_watch.triggered) break;
+            }
+            free(cond_buf);
+            if (step_val > iter_count && iter_count > 0) {
+                throw_error("LoopStepError", "Loop step larger than loop size on line %d", line->line_num);
             }
             i = block_end + 1;
         }
