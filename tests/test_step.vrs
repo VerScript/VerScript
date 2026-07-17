@@ -1,0 +1,11 @@
+i : 0
+while i < 10 step 3
+  if i = 0 then
+    display "iter"
+  else if i = 3 then
+    display "3"
+  else if i = 6 then
+    display "6"
+  else if i = 9 then
+    display "9"
+  i : i + 1
