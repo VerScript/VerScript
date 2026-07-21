@@ -4,6 +4,8 @@ on:
   schedule:
     - cron: '0 0 * * *'
   workflow_dispatch:
+  issues:
+    types: [opened]
 
 permissions:
   contents: write
@@ -15,13 +17,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Daily Scan
+      - name: Run Jules AI Agent
         uses: google-labs-code/jules-action@main
         with:
           jules_api_key: ${{ secrets.JULES_API_KEY }}
-                    prompt: |
-            You are a daily automated software assistant. Scan the entire repository for bugs, security vulnerabilities, or code improvements.
-            - If any bugs are found: provide code solutions and explain the fixes.
-            - If no bugs or security/code improvements are found: do not modify any files with logs or findings. Instead, just create an empty Pull Request (with no file changes/empty commit) with the subject "Jules: Daily Run".
-            - Do not create or update any daily run findings log files.
-            - The subject of the Pull Request MUST be "Jules: Daily Run".
+          prompt: |
+            You are an automated software assistant.
+            - If triggered by an issue: analyze the codebase, implement a complete code solution, create a Pull Request titled "Jules: Solution for #${{ github.event.issue.number }}", and comment on the issue with the PR link and detailed explanation of the fix.
+            - If triggered by daily schedule or workflow dispatch: scan the repository for bugs and vulnerabilities. If bugs or code improvements are found, implement fixes and create a Pull Request titled "Jules: Daily Run". If no updates are required, create an empty Pull Request (no file changes) titled "Jules: Daily Run". Do not create or update any daily run findings log files.
