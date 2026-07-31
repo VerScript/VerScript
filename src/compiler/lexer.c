@@ -4,6 +4,34 @@
 #include <ctype.h>
 #include "../../include/lexer.h"
 
+char *tracked_allocs[1024];
+int tracked_alloc_count = 0;
+
+void track_alloc(char *ptr) {
+    if (tracked_alloc_count < 1024 && ptr != NULL) {
+        tracked_allocs[tracked_alloc_count++] = ptr;
+    }
+}
+
+void untrack_alloc(char *ptr) {
+    for (int i = 0; i < tracked_alloc_count; i++) {
+        if (tracked_allocs[i] == ptr) {
+            tracked_allocs[i] = tracked_allocs[--tracked_alloc_count];
+            return;
+        }
+    }
+}
+
+void free_all_tracked(void) {
+    for (int i = 0; i < tracked_alloc_count; i++) {
+        if (tracked_allocs[i]) {
+            free(tracked_allocs[i]);
+            tracked_allocs[i] = NULL;
+        }
+    }
+    tracked_alloc_count = 0;
+}
+
 Token getNextToken(const char **cursor) {
     Token token;
     token.value = NULL;
@@ -91,6 +119,7 @@ Token getNextToken(const char **cursor) {
 
         token.type = TOKEN_IDENTIFIER;
         token.value = malloc(len + 1);
+        track_alloc(token.value);
         strncpy(token.value, start, len);
         token.value[len] = '\0';
         return token;
@@ -104,6 +133,7 @@ Token getNextToken(const char **cursor) {
         size_t len = *cursor - start;
         token.type = TOKEN_NUMBER;
         token.value = malloc(len + 1);
+        track_alloc(token.value);
         strncpy(token.value, start, len);
         token.value[len] = '\0';
         return token;
@@ -129,6 +159,7 @@ Token getNextToken(const char **cursor) {
         while (**cursor != '"' && **cursor != '\0') (*cursor)++;
         size_t len = *cursor - start;
         token.value = malloc(len + 1);
+        track_alloc(token.value);
         strncpy(token.value, start, len);
         token.value[len] = '\0';
         token.type = TOKEN_STRING;
@@ -139,6 +170,7 @@ Token getNextToken(const char **cursor) {
     // Unknown single character error
     token.type = TOKEN_ERROR;
     token.value = malloc(2);
+    track_alloc(token.value);
     token.value[0] = **cursor;
     token.value[1] = '\0';
     (*cursor)++;

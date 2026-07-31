@@ -57,13 +57,20 @@ int is_critical_error(const char *name) {
 }
 
 void throw_error(const char *name, const char *fmt, ...) {
-    strcpy(current_error_name, name);
+    if (name != current_error_name) {
+        strcpy(current_error_name, name);
+    }
+
+    char temp_msg[256];
     va_list args;
     va_start(args, fmt);
-    vsnprintf(current_error_msg, sizeof(current_error_msg), fmt, args);
+    vsnprintf(temp_msg, sizeof(temp_msg), fmt, args);
     va_end(args);
 
+    strcpy(current_error_msg, temp_msg);
+
     if (error_mode == ERR_MODE_FORCE) {
+        free_all_tracked();
         printf("ERROR: %s: %s\n", name, current_error_msg);
         exit(1);
     }
@@ -77,11 +84,13 @@ void throw_error(const char *name, const char *fmt, ...) {
     }
 
     if (suppress) {
+        free_all_tracked();
         if (suppress_jmp_active) {
             longjmp(suppress_jmp_env, 1);
         }
     }
 
+    free_all_tracked();
     if (jmp_stack_ptr > 0) {
         longjmp(jmp_env_stack[jmp_stack_ptr - 1], 1);
     } else {
@@ -170,6 +179,7 @@ Token peekToken(const char **cursor) {
 
 void freeToken(Token *t) {
     if (t->value) {
+        untrack_alloc(t->value);
         free(t->value);
         t->value = NULL;
     }
