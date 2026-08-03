@@ -218,6 +218,7 @@ int evaluate_expression(const char **cursor, char **out_str, int *out_type) {
             throw_error("InvalidOperandError", "Invalid operand for unary '-'");
         }
         *out_str = strdup(t.value);
+        track_alloc(*out_str);
         *out_type = VAR_STRING;
     } else if (t.type == TOKEN_IDENTIFIER) {
         Variable *v = get_var(t.value);
@@ -235,6 +236,7 @@ int evaluate_expression(const char **cursor, char **out_str, int *out_type) {
                     throw_error("InvalidOperandError", "Invalid operand for unary '-'");
                 }
                 *out_str = strdup(v->string_val);
+                track_alloc(*out_str);
                 *out_type = VAR_STRING;
             }
         } else {
@@ -279,6 +281,7 @@ int evaluate_expression(const char **cursor, char **out_str, int *out_type) {
                     throw_error("InvalidOperandError", "Invalid operand for unary '-'");
                 }
                 rhs_str = strdup(rhs.value);
+                track_alloc(rhs_str);
             } else if (rhs.type == TOKEN_IDENTIFIER) {
                 Variable *v = get_var(rhs.value);
                 if (v) {
@@ -294,6 +297,7 @@ int evaluate_expression(const char **cursor, char **out_str, int *out_type) {
                             throw_error("InvalidOperandError", "Invalid operand for unary '-'");
                         }
                         rhs_str = strdup(v->string_val);
+                        track_alloc(rhs_str);
                     }
                 } else {
                     throw_error("UndefinedVariableError", "Undefined variable '%s'", rhs.value);
@@ -307,8 +311,10 @@ int evaluate_expression(const char **cursor, char **out_str, int *out_type) {
                     size_t len1 = strlen(*out_str);
                     size_t len2 = strlen(rhs_str);
                     char *new_str = malloc(len1 + len2 + 1);
+                    track_alloc(new_str);
                     memcpy(new_str, *out_str, len1);
                     memcpy(new_str + len1, rhs_str, len2 + 1);
+                    untrack_alloc(*out_str);
                     free(*out_str);
                     *out_str = new_str;
                 } else if (*out_str != NULL && rhs_str == NULL) {
@@ -317,8 +323,10 @@ int evaluate_expression(const char **cursor, char **out_str, int *out_type) {
                     size_t len1 = strlen(*out_str);
                     size_t len2 = strlen(num_str);
                     char *new_str = malloc(len1 + len2 + 1);
+                    track_alloc(new_str);
                     memcpy(new_str, *out_str, len1);
                     memcpy(new_str + len1, num_str, len2 + 1);
+                    untrack_alloc(*out_str);
                     free(*out_str);
                     *out_str = new_str;
                 } else if (*out_str == NULL && rhs_str != NULL) {
@@ -327,6 +335,7 @@ int evaluate_expression(const char **cursor, char **out_str, int *out_type) {
                     size_t len1 = strlen(num_str);
                     size_t len2 = strlen(rhs_str);
                     char *new_str = malloc(len1 + len2 + 1);
+                    track_alloc(new_str);
                     memcpy(new_str, num_str, len1);
                     memcpy(new_str + len1, rhs_str, len2 + 1);
                     *out_str = new_str;
@@ -360,7 +369,7 @@ int evaluate_expression(const char **cursor, char **out_str, int *out_type) {
                     throw_error("DivisionByZeroError", "Division by zero");
                 }
             }
-            if (rhs_str) free(rhs_str);
+            if (rhs_str) { untrack_alloc(rhs_str); free(rhs_str); }
             freeToken(&rhs);
         }
         else if (op.type == TOKEN_EQUAL || op.type == TOKEN_GREATER || op.type == TOKEN_LESS ||
@@ -398,10 +407,12 @@ int evaluate_expression(const char **cursor, char **out_str, int *out_type) {
             }
 
             if (*out_str) {
-                free(*out_str);
+                untrack_alloc(*out_str);
+                    free(*out_str);
                 *out_str = NULL;
             }
             if (rhs_str) {
+                untrack_alloc(rhs_str);
                 free(rhs_str);
             }
 
@@ -481,6 +492,7 @@ void execute_line(const char *text, int line_num) {
             int val = evaluate_expression(&cursor, &out_str, &out_type);
             if (out_str) {
                 printf("%s\n", out_str);
+                untrack_alloc(out_str);
                 free(out_str);
             } else if (out_type == VAR_BOOL) {
                 printf("%s\n", val ? "true" : "false");
@@ -547,6 +559,7 @@ void execute_line(const char *text, int line_num) {
                 if (out_str) {
                     v->type = VAR_STRING;
                     if (v->string_val) free(v->string_val);
+                    untrack_alloc(out_str);
                     v->string_val = out_str;
                 } else if (out_type == VAR_BOOL) {
                     v->type = VAR_BOOL;
@@ -620,7 +633,11 @@ void execute_block(int start, int end) {
             char *out_str = NULL;
             int out_type = VAR_INT;
             int iters = evaluate_expression(&cursor, &out_str, &out_type);
-            if (out_str || out_type == VAR_STRING) {
+            if (out_str) {
+                untrack_alloc(out_str);
+                free(out_str);
+            }
+            if (out_type == VAR_STRING) {
                 throw_error("LoopIterationError", "Loop iterations must be numeric on line %d", line->line_num);
             }
 
@@ -631,7 +648,11 @@ void execute_block(int start, int end) {
                 char *step_out_str = NULL;
                 int step_out_type = VAR_INT;
                 step_val = evaluate_expression(&cursor, &step_out_str, &step_out_type);
-                if (step_out_str || step_out_type == VAR_STRING) {
+                if (step_out_str) {
+                    untrack_alloc(step_out_str);
+                    free(step_out_str);
+                }
+                if (step_out_type == VAR_STRING) {
                     throw_error("LoopStepError", "Loop step must be numeric on line %d", line->line_num);
                 }
             }
@@ -684,7 +705,11 @@ void execute_block(int start, int end) {
                 char *out_str = NULL;
                 int out_type = VAR_INT;
                 start_val = evaluate_expression(&cursor, &out_str, &out_type);
-                if (out_str || out_type == VAR_STRING) {
+                if (out_str) {
+                    untrack_alloc(out_str);
+                    free(out_str);
+                }
+                if (out_type == VAR_STRING) {
                     throw_error("LoopLimitError", "Loop start index must be numeric on line %d", line->line_num);
                 }
             } else {
@@ -708,7 +733,11 @@ void execute_block(int start, int end) {
             char *out_str = NULL;
             int out_type = VAR_INT;
             int end_val = evaluate_expression(&cursor, &out_str, &out_type);
-            if (out_str || out_type == VAR_STRING) {
+            if (out_str) {
+                untrack_alloc(out_str);
+                free(out_str);
+            }
+            if (out_type == VAR_STRING) {
                 throw_error("LoopLimitError", "Loop end index must be numeric on line %d", line->line_num);
             }
 
@@ -719,7 +748,11 @@ void execute_block(int start, int end) {
                 char *step_out_str = NULL;
                 int step_out_type = VAR_INT;
                 step_val = evaluate_expression(&cursor, &step_out_str, &step_out_type);
-                if (step_out_str || step_out_type == VAR_STRING) {
+                if (step_out_str) {
+                    untrack_alloc(step_out_str);
+                    free(step_out_str);
+                }
+                if (step_out_type == VAR_STRING) {
                     throw_error("LoopStepError", "Loop step must be numeric on line %d", line->line_num);
                 }
             }
@@ -756,6 +789,7 @@ void execute_block(int start, int end) {
             }
             int cond_len = then_ptr - cursor;
             char *cond_str = malloc(cond_len + 1);
+            track_alloc(cond_str);
             strncpy(cond_str, cursor, cond_len);
             cond_str[cond_len] = '\0';
 
@@ -764,8 +798,11 @@ void execute_block(int start, int end) {
             int out_type = VAR_INT;
             int cond_val = evaluate_expression(&cond_cursor, &out_str, &out_type);
             if (out_str) {
+                untrack_alloc(out_str);
+                free(out_str);
                 throw_error("InvalidOperandError", "Condition must evaluate to a boolean or number on line %d", line->line_num);
             }
+            untrack_alloc(cond_str);
             free(cond_str);
 
             int block_start = i + 1;
@@ -824,6 +861,7 @@ void execute_block(int start, int end) {
                         }
                         int elif_cond_len = elif_then_ptr - elif_cursor;
                         char *elif_cond_str = malloc(elif_cond_len + 1);
+                        track_alloc(elif_cond_str);
                         strncpy(elif_cond_str, elif_cursor, elif_cond_len);
                         elif_cond_str[elif_cond_len] = '\0';
 
@@ -832,8 +870,11 @@ void execute_block(int start, int end) {
                         int elif_out_type = VAR_INT;
                         int elif_cond_val = evaluate_expression(&elif_cond_cursor, &elif_out_str, &elif_out_type);
                         if (elif_out_str) {
+                            untrack_alloc(elif_out_str);
+                            free(elif_out_str);
                             throw_error("InvalidOperandError", "Condition must evaluate to a boolean or number on line %d", lookahead->line_num);
                         }
+                        untrack_alloc(elif_cond_str);
                         free(elif_cond_str);
 
                         if (elif_cond_val) {
@@ -913,6 +954,7 @@ void execute_block(int start, int end) {
 
             int cond_len = step_ptr ? (int)(step_ptr - cursor) : (int)strlen(cursor);
             char *cond_buf = malloc(cond_len + 1);
+            track_alloc(cond_buf);
             strncpy(cond_buf, cursor, cond_len);
             cond_buf[cond_len] = '\0';
 
@@ -923,7 +965,10 @@ void execute_block(int start, int end) {
                 int out_type = VAR_INT;
                 int cond_val = evaluate_expression(&eval_cursor, &out_str, &out_type);
                 if (out_str) {
-                    free(cond_buf);
+                    untrack_alloc(out_str);
+                    free(out_str);
+                    untrack_alloc(cond_buf);
+            free(cond_buf);
                     throw_error("InvalidOperandError", "While condition must evaluate to a boolean or number on line %d", line->line_num);
                 }
                 if (!cond_val) break;
@@ -934,6 +979,7 @@ void execute_block(int start, int end) {
                 iter_count++;
                 if (active_watch.active && active_watch.triggered) break;
             }
+            untrack_alloc(cond_buf);
             free(cond_buf);
             if (step_val > iter_count && iter_count > 0) {
                 throw_error("LoopStepError", "Loop step larger than loop size on line %d", line->line_num);
@@ -978,6 +1024,7 @@ void execute_block(int start, int end) {
 
             int cond_len = step_ptr ? (int)(step_ptr - cursor) : (int)strlen(cursor);
             char *cond_buf = malloc(cond_len + 1);
+            track_alloc(cond_buf);
             strncpy(cond_buf, cursor, cond_len);
             cond_buf[cond_len] = '\0';
 
@@ -988,7 +1035,10 @@ void execute_block(int start, int end) {
                 int out_type = VAR_INT;
                 int cond_val = evaluate_expression(&eval_cursor, &out_str, &out_type);
                 if (out_str) {
-                    free(cond_buf);
+                    untrack_alloc(out_str);
+                    free(out_str);
+                    untrack_alloc(cond_buf);
+            free(cond_buf);
                     throw_error("InvalidOperandError", "Until condition must evaluate to a boolean or number on line %d", line->line_num);
                 }
                 if (cond_val) break;
@@ -999,6 +1049,7 @@ void execute_block(int start, int end) {
                 iter_count++;
                 if (active_watch.active && active_watch.triggered) break;
             }
+            untrack_alloc(cond_buf);
             free(cond_buf);
             if (step_val > iter_count && iter_count > 0) {
                 throw_error("LoopStepError", "Loop step larger than loop size on line %d", line->line_num);
@@ -1106,6 +1157,8 @@ void execute_block(int start, int end) {
                     int out_type = VAR_INT;
                     int cond_val = evaluate_expression(&expr_cursor, &out_str, &out_type);
                     if (out_str) {
+                        untrack_alloc(out_str);
+                        free(out_str);
                         throw_error("InvalidOperandError", "Condition must evaluate to a boolean or number on line %d", unless_line->line_num);
                     }
                     if (cond_val) {
@@ -1120,6 +1173,8 @@ void execute_block(int start, int end) {
                     int out_type = VAR_INT;
                     int start_val = evaluate_expression(&expr_cursor, &out_str, &out_type);
                     if (out_str) {
+                        untrack_alloc(out_str);
+                        free(out_str);
                         throw_error("InvalidOperandError", "Condition must evaluate to a boolean or number on line %d", unless_line->line_num);
                     }
 
@@ -1216,6 +1271,8 @@ void execute_block(int start, int end) {
                 int out_type = VAR_INT;
                 int val = evaluate_expression(&cursor, &out_str, &out_type);
                 if (out_str) {
+                    untrack_alloc(out_str);
+                    free(out_str);
                     throw_error("InvalidOperandError", "Watch condition must evaluate to a boolean or number on line %d", line->line_num);
                 }
                 if (val) {
