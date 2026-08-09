@@ -1,0 +1,40 @@
+!!
+  VerScript Language Showcase — v1.2.0
+  Featuring:
+    1: Multiline Comments and Single-line Comments
+    2: Command Attributes (?color, ?newline=false, ?default, ?msg)
+    3: Stepped Iteration & Loops (iterate i from x to y step z)
+    4: Exception Handling (do ... unless) & Custom Throws
+    5: System Block Operators (SuppressErrors, CriticalErrors)
+!!
+
+display "=== 1. ANSI Color & Formatting Attributes ===" ?color="cyan"
+display "Success: VerScript Engine Online!" ?color="green"
+display "Warning: High memory utilization detected." ?color="yellow"
+display "Error: DivisionByZero handled gracefully." ?color="red"
+
+display "=== 2. Inline Printing with ?newline=false ===" ?color="purple"
+display "Loading modules: [" ?newline=false ?color="cyan"
+display "Core, " ?newline=false ?color="yellow"
+display "Lexer, " ?newline=false ?color="yellow"
+display "VS#-1B Neural Engine] " ?newline=false ?color="cyan"
+display "Done!" ?color="green"
+
+display "=== 3. Stepped Iteration Showcase ===" ?color="cyan"
+iterate count from 1 to 10 step 2
+  display "Iteration Step: " + count ?color="cyan"
+
+display "=== 4. Exception Handling & Custom Throws ===" ?color="purple"
+do
+  display "Triggering custom exception with ?msg attribute..." ?color="yellow"
+  throw DivisionByZeroError ?msg="Division by zero in calculate_ratio()"
+unless DivisionByZeroError
+  display "Caught Exception: " + error ?color="green"
+
+display "=== 5. Error Suppression Block Operator ===" ?color="cyan"
+SuppressErrors
+  display "Running invalid operation under SuppressErrors..." ?color="yellow"
+  invalid_val : 10 / 0
+  display "Division by zero bypassed cleanly!" ?color="green"
+
+display "=== VerScript Execution Complete ===" ?color="green"
