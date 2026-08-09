@@ -1,0 +1,21 @@
+!!
+  VerScript Feature Test:
+  1. Multiline Comments
+  2. Command Attributes (?attr and kwargs)
+!!
+
+display "--- 1. Testing Color Attributes ---" ?color="cyan"
+display "Success: Green Output!" ?color="green"
+display "Warning: Yellow Output!" ?color="yellow"
+display "Error: Red Output!" ?color="red"
+
+display "--- 2. Testing Inline & Suppressed Newline Attributes ---" ?color="purple"
+display "Item 1, " ?newline=false ?color="cyan"
+display "Item 2, " ?newline=false ?color="yellow"
+display "Item 3 (Done!)" ?color="green"
+
+display "--- 3. Testing Custom Throw with ?msg Attribute ---" ?color="blue"
+do
+  throw DivisionByZeroError ?msg="Custom DivisionByZero error triggered with attribute!"
+unless DivisionByZeroError
+  display "Caught: " + error ?color="green"
