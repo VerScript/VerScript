@@ -1,0 +1,173 @@
+        :root {
+            --bg-color: #08080C;
+            --surface-color: #111116;
+            --primary: #00FFCC;
+            --secondary: #9D00FF;
+            --text-main: #FFFFFF;
+            --text-muted: #A0A0B0;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: 'Outfit', sans-serif;
+            margin: 0;
+            padding: 0;
+            line-height: 1.7;
+        }
+
+        /* NAV */
+        nav {
+            padding: 16px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            position: sticky;
+            top: 0;
+            background: rgba(8, 8, 12, 0.9);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            z-index: 50;
+        }
+        .logo {
+            font-size: 1.4rem;
+            font-weight: 900;
+            text-decoration: none;
+            background: linear-gradient(90deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .nav-badge {
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            font-weight: 300;
+        }
+
+        /* CONTAINER */
+        .container {
+            max-width: 820px;
+            margin: 0 auto;
+            padding: 48px 24px 80px;
+        }
+
+        /* HEADINGS */
+        h1 {
+            font-size: clamp(2rem, 6vw, 3rem);
+            margin: 0 0 16px 0;
+            font-weight: 900;
+            letter-spacing: -1px;
+        }
+        h2 {
+            font-size: clamp(1.2rem, 4vw, 1.6rem);
+            margin: 48px 0 12px 0;
+            font-weight: 700;
+            color: var(--text-main);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        h2::before {
+            content: '';
+            display: inline-block;
+            width: 4px;
+            height: 1em;
+            background: linear-gradient(180deg, var(--primary), var(--secondary));
+            border-radius: 2px;
+            flex-shrink: 0;
+        }
+
+        p {
+            font-size: 1.05rem;
+            line-height: 1.7;
+            color: var(--text-muted);
+            font-weight: 300;
+            margin: 0 0 16px 0;
+        }
+        code {
+            background: rgba(0, 255, 204, 0.1);
+            color: var(--primary);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+
+        /* CODE BLOCKS */
+        .code-block {
+            background: #000;
+            padding: 20px 24px;
+            border-radius: 12px;
+            border: 1px solid rgba(0, 255, 204, 0.15);
+            font-family: 'Courier New', Courier, monospace;
+            color: #f8f8f2;
+            margin: 16px 0 8px 0;
+            white-space: pre-wrap;
+            overflow-wrap: break-word;
+            font-size: 0.95rem;
+            line-height: 1.6;
+            overflow-x: auto;
+        }
+        .token-comment { color: #7f8c8d; font-style: italic; }
+        .token-keyword { color: #ff79c6; font-weight: bold; }
+        .token-string { color: #f1fa8c; }
+        .token-number { color: #bd93f9; }
+        .token-operator { color: #50fa7b; }
+
+        /* INTRO BADGE */
+        .intro-text {
+            font-size: 1.1rem;
+            color: var(--text-muted);
+            margin-bottom: 40px;
+            padding-bottom: 32px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        /* BACK LINK */
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--primary);
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 500;
+            margin-bottom: 32px;
+            opacity: 0.8;
+            transition: opacity 0.2s;
+        }
+        .back-link:hover { opacity: 1; }
+
+        @media (max-width: 600px) {
+            .container { padding: 32px 16px 60px; }
+            nav { padding: 14px 16px; }
+            .code-block { padding: 16px; font-size: 0.85rem; }
+            h2 { margin-top: 36px; }
+        }
+
+        /* ─── ENHANCED COLOR DABS (NEON GLOWS) ─── */
+        .code-block {
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.5), 0 0 15px rgba(0, 255, 204, 0.05);
+            border-color: rgba(0, 255, 204, 0.25) !important;
+        }
+        code {
+            background: rgba(0, 255, 204, 0.15) !important;
+            border: 1px solid rgba(0, 255, 204, 0.2);
+            text-shadow: 0 0 3px rgba(0, 255, 204, 0.2);
+        }
+        nav {
+            border-bottom: 1px solid rgba(0, 255, 204, 0.2) !important;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3), 0 0 15px rgba(0, 255, 204, 0.05);
+        }
+        .logo {
+            text-shadow: 0 0 8px rgba(0, 255, 204, 0.4);
+        }
+        .nav-badge {
+            background: linear-gradient(90deg, var(--primary), var(--secondary)) !important;
+            color: #000 !important;
+            font-weight: bold;
+            box-shadow: 0 0 10px rgba(0, 255, 204, 0.3);
+        }
