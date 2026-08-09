@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="VerScript — A lightweight C-based language. Compile, run, and build in the browser.">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; font-src 'self' https://fonts.gstatic.com; style-src 'self' https://fonts.googleapis.com; img-src 'self' data:;">
+    <meta property="og:title" content="VerScript | The Bridge Between Text and Virtual Machine">
+    <meta property="og:description" content="VerScript — A lightweight C-based language. Compile, run, and build in the browser.">
+    <meta property="og:image" content="https://verscript.github.io/logo.png">
+    <meta property="og:url" content="https://verscript.github.io/index.html">
+    <meta property="og:type" content="website">
+    <title>VerScript | The Bridge Between Text and Virtual Machine</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;500;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+    <nav>
+        <div class="logo">VerScript</div>
+        <div class="nav-links">
+            <a href="https://github.com/VerScript/VerScript" target="_blank" rel="noopener noreferrer">GitHub</a>
+            <a href="docs/index.html">Documentation</a>
+        </div>
+        <button class="hamburger" id="hamburger" aria-label="Toggle menu" aria-expanded="false">
+            <span></span><span></span><span></span>
+        </button>
+    </nav>
+
+    <!-- Mobile fullscreen menu -->
+    <div class="mobile-menu" id="mobileMenu" role="navigation" aria-label="Mobile navigation">
+        <a href="https://github.com/VerScript/VerScript" target="_blank" rel="noopener noreferrer" id="mobileMenuLink1">GitHub</a>
+        <a href="docs/index.html" id="mobileMenuLink2">Documentation</a>
+        <a href="https://verscript.github.io/IDE/" target="_blank" rel="noopener noreferrer" id="mobileMenuLink3">Open Web IDE</a>
+    </div>
+
+    <div class="container">
+        <header>
+            <h1>Compile the <span>Future</span></h1>
+            <p class="tagline">A lightweight C-based parser supporting strings, booleans, integer variables, mathematical expressions, and dynamic loops.</p>
+            <div class="cta-group">
+                <a href="docs/index.html" class="cta-btn" id="ctaDocs">Enter Documentation</a>
+                <a href="https://verscript.github.io/IDE/" target="_blank" rel="noopener noreferrer" class="cta-btn outline" id="ctaIDE">Open Web IDE</a>
+            </div>
+
+            <!-- Code Demo Section -->
+            <div class="code-preview-window">
+                <div class="window-header">
+                    <span class="dot dot-red"></span>
+                    <span class="dot dot-yellow"></span>
+                    <span class="dot dot-green"></span>
+                    <span class="window-title">sample.vrs</span>
+                </div>
+                <pre class="code-content"><code><span class="token-comment">!!
+  VerScript Language Showcase — v1.2.0
+  Featuring:
+    1: Multiline Comments and Single-line Comments
+    2: Command Attributes (?color, ?newline=false, ?default, ?msg)
+    3: Stepped Iteration &amp; Loops (iterate i from x to y step z)
+    4: Exception Handling (do ... unless) &amp; Custom Throws
+    5: System Block Operators (SuppressErrors, CriticalErrors)
+!!</span>
+
+<span class="token-keyword">display</span> <span class="token-string">"=== 1. ANSI Color &amp; Formatting Attributes ==="</span> <span class="token-operator">?color="cyan"</span>
+<span class="token-keyword">display</span> <span class="token-string">"Success: VerScript Engine Online!"</span> <span class="token-operator">?color="green"</span>
+<span class="token-keyword">display</span> <span class="token-string">"Warning: High memory utilization detected."</span> <span class="token-operator">?color="yellow"</span>
+<span class="token-keyword">display</span> <span class="token-string">"Error: DivisionByZero handled gracefully."</span> <span class="token-operator">?color="red"</span>
+
+<span class="token-keyword">display</span> <span class="token-string">"=== 2. Inline Printing with ?newline=false ==="</span> <span class="token-operator">?color="purple"</span>
+<span class="token-keyword">display</span> <span class="token-string">"Loading modules: ["</span> <span class="token-operator">?newline=false</span> <span class="token-operator">?color="cyan"</span>
+<span class="token-keyword">display</span> <span class="token-string">"Core, "</span> <span class="token-operator">?newline=false</span> <span class="token-operator">?color="yellow"</span>
+<span class="token-keyword">display</span> <span class="token-string">"Lexer, "</span> <span class="token-operator">?newline=false</span> <span class="token-operator">?color="yellow"</span>
+<span class="token-keyword">display</span> <span class="token-string">"VS#-1B Neural Engine] "</span> <span class="token-operator">?newline=false</span> <span class="token-operator">?color="cyan"</span>
+<span class="token-keyword">display</span> <span class="token-string">"Done!"</span> <span class="token-operator">?color="green"</span>
+
+<span class="token-keyword">display</span> <span class="token-string">"=== 3. Stepped Iteration Showcase ==="</span> <span class="token-operator">?color="cyan"</span>
+<span class="token-keyword">iterate</span> count <span class="token-keyword">from</span> <span class="token-number">1</span> <span class="token-keyword">to</span> <span class="token-number">10</span> <span class="token-keyword">step</span> <span class="token-number">2</span>
+  <span class="token-keyword">display</span> <span class="token-string">"Iteration Step: "</span> <span class="token-operator">+</span> count <span class="token-operator">?color="cyan"</span>
+
+<span class="token-keyword">display</span> <span class="token-string">"=== 4. Exception Handling &amp; Custom Throws ==="</span> <span class="token-operator">?color="purple"</span>
+<span class="token-keyword">do</span>
+  <span class="token-keyword">display</span> <span class="token-string">"Triggering custom exception with ?msg attribute..."</span> <span class="token-operator">?color="yellow"</span>
+  <span class="token-keyword">throw</span> DivisionByZeroError <span class="token-operator">?msg="Division by zero in calculate_ratio()"</span>
+<span class="token-keyword">unless</span> DivisionByZeroError
+  <span class="token-keyword">display</span> <span class="token-string">"Caught Exception: "</span> <span class="token-operator">+</span> <span class="token-keyword">error</span> <span class="token-operator">?color="green"</span>
+
+<span class="token-keyword">display</span> <span class="token-string">"=== 5. Error Suppression Block Operator ==="</span> <span class="token-operator">?color="cyan"</span>
+<span class="token-keyword">SuppressErrors</span>
+  <span class="token-keyword">display</span> <span class="token-string">"Running invalid operation under SuppressErrors..."</span> <span class="token-operator">?color="yellow"</span>
+  invalid_val <span class="token-operator">:</span> <span class="token-number">10</span> <span class="token-operator">/</span> <span class="token-number">0</span>
+  <span class="token-keyword">display</span> <span class="token-string">"Division by zero bypassed cleanly!"</span> <span class="token-operator">?color="green"</span>
+
+<span class="token-keyword">display</span> <span class="token-string">"=== VerScript Execution Complete ==="</span> <span class="token-operator">?color="green"</span></code></pre>
+            </div>
+        </header>
+
+        <div class="hero-graphic" aria-hidden="true">
+            <div class="circle circle-1"></div>
+            <div class="circle circle-2"></div>
+            <div class="circle circle-3"></div>
+            <svg class="hero-svg" width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="url(#gradient)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <defs>
+                    <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stop-color="#00FFCC" />
+                        <stop offset="100%" stop-color="#9D00FF" />
+                    </linearGradient>
+                </defs>
+                <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+                <polyline points="2 17 12 22 22 17"></polyline>
+                <polyline points="2 12 12 17 22 12"></polyline>
+            </svg>
+        </div>
+
+        <div class="features-grid">
+            <div class="feature-card">
+                <h2>Lightweight C Core</h2>
+                <p>VerScript is built on a minimal C foundation. It includes a custom lexer and interpreter designed for fast tokenization.</p>
+            </div>
+            <div class="feature-card">
+                <h2>Dynamic Types & Expressions</h2>
+                <p>Enjoy dynamic typing with support for strings, integers, and booleans. Effortlessly concatenate variables and evaluate mathematical expressions directly within the language.</p>
+            </div>
+            <div class="feature-card">
+                <h2>🔄 Loops & Iterations</h2>
+                <p>Supports clean indented loop structures (<code>loop n</code>) and variable iteration bounds (<code>iterate i from x to y</code>) compiled and executed on the fly.</p>
+            </div>
+            <div class="feature-card">
+                <h2>🛡️ Exception Handling &amp; Fallbacks</h2>
+                <p>Supports robust try-catch mechanisms with named compiler errors via <code>do-unless [error]</code>, as well as condition fallbacks <code>do-unless [bool]</code>.</p>
+            </div>
+            <div class="feature-card">
+                <h2>✨ VS#-1B Neural AI Engine</h2>
+                <p>Powered by <strong>VS#-1B</strong>, a custom 1-Billion Parameter neural architecture designed for real-time code synthesis, automated error repair, and interactive logic explanation.</p>
+            </div>
+            <div class="feature-card">
+                <h2>💬 Multiline Comments (<code>!! ... !!</code>)</h2>
+                <p>Support for block multiline comment structures (<code>!! ... !!</code>) to comment out large code blocks or documentation notes across lines.</p>
+            </div>
+            <div class="feature-card">
+                <h2>⚙️ Command Attributes &amp; Kwargs</h2>
+                <p>Attach optional modifiers and keyword arguments directly to commands using <code>?attribute</code> (e.g. <code>?color="green"</code>, <code>?newline=false</code>, <code>?default="val"</code>).</p>
+            </div>
+        </div>
+
+
+        <footer>
+            &copy; 2026 VerScript. Open Source under the MIT License.
+        </footer>
+    </div>
+
+    <script src="js/main.js"></script>
+</body>
+</html>
