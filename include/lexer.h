@@ -29,6 +29,7 @@ typedef enum {
     TOKEN_MINUS,
     TOKEN_STAR,
     TOKEN_SLASH,
+    TOKEN_QUESTION,
     TOKEN_THROW,
     TOKEN_EOF,
     TOKEN_ERROR

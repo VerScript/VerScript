@@ -38,12 +38,25 @@ Token getNextToken(const char **cursor) {
 
     while (1) {
         // Skip whitespace
-        while (isspace(**cursor)) (*cursor)++;
+        while (isspace((unsigned char)**cursor)) (*cursor)++;
 
-        // Skip comments starting with !
+        // Skip comments starting with ! (single line !) or !! (multiline !!)
         if (**cursor == '!') {
-            (*cursor)++;
-            while (**cursor != '\n' && **cursor != '\0') (*cursor)++;
+            if (*(*cursor + 1) == '!') {
+                // Multiline comment !! ... !!
+                *cursor += 2;
+                while (**cursor != '\0') {
+                    if (**cursor == '!' && *(*cursor + 1) == '!') {
+                        *cursor += 2;
+                        break;
+                    }
+                    (*cursor)++;
+                }
+            } else {
+                // Single-line comment !
+                (*cursor)++;
+                while (**cursor != '\n' && **cursor != '\0') (*cursor)++;
+            }
         } else {
             break;
         }
@@ -55,9 +68,9 @@ Token getNextToken(const char **cursor) {
     }
 
     // Identifiers and Keywords
-    if (isalpha(**cursor) || **cursor == '_') {
+    if (isalpha((unsigned char)**cursor) || **cursor == '_') {
         const char *start = *cursor;
-        while (isalnum(**cursor) || **cursor == '_') (*cursor)++;
+        while (isalnum((unsigned char)**cursor) || **cursor == '_') (*cursor)++;
         size_t len = *cursor - start;
 
         if (len == 7 && strncmp(start, "display", 7) == 0) {
@@ -126,16 +139,15 @@ Token getNextToken(const char **cursor) {
     }
 
     // Numbers
-    if (isdigit(**cursor)) {
+    if (isdigit((unsigned char)**cursor)) {
         const char *start = *cursor;
-        while (isdigit(**cursor)) (*cursor)++;
-        // Simple integers for now
+        while (isdigit((unsigned char)**cursor)) (*cursor)++;
         size_t len = *cursor - start;
-        token.type = TOKEN_NUMBER;
         token.value = malloc(len + 1);
         track_alloc(token.value);
         strncpy(token.value, start, len);
         token.value[len] = '\0';
+        token.type = TOKEN_NUMBER;
         return token;
     }
 
@@ -151,6 +163,7 @@ Token getNextToken(const char **cursor) {
     if (**cursor == '-') { token.type = TOKEN_MINUS; (*cursor)++; return token; }
     if (**cursor == '*') { token.type = TOKEN_STAR; (*cursor)++; return token; }
     if (**cursor == '/') { token.type = TOKEN_SLASH; (*cursor)++; return token; }
+    if (**cursor == '?') { token.type = TOKEN_QUESTION; (*cursor)++; return token; }
 
     // Strings
     if (**cursor == '"') {

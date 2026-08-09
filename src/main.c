@@ -441,6 +441,8 @@ int line_capacity = 0;
 void parse_lines(const char *buffer) {
     const char *p = buffer;
     int line_num = 1;
+    int in_multiline_comment = 0;
+
     while (*p != '\0') {
         const char *eol = p;
         while (*eol != '\n' && *eol != '\0') eol++;
@@ -450,8 +452,31 @@ void parse_lines(const char *buffer) {
         memcpy(raw_line, p, raw_len);
         raw_line[raw_len] = '\0';
 
+        char clean_line[1024] = "";
+        int clean_pos = 0;
+        char *src_ptr = raw_line;
+
+        while (*src_ptr != '\0') {
+            if (in_multiline_comment) {
+                if (src_ptr[0] == '!' && src_ptr[1] == '!') {
+                    in_multiline_comment = 0;
+                    src_ptr += 2;
+                } else {
+                    src_ptr++;
+                }
+            } else {
+                if (src_ptr[0] == '!' && src_ptr[1] == '!') {
+                    in_multiline_comment = 1;
+                    src_ptr += 2;
+                } else {
+                    clean_line[clean_pos++] = *src_ptr++;
+                }
+            }
+        }
+        clean_line[clean_pos] = '\0';
+
         int indent = 0;
-        char *src = raw_line;
+        char *src = clean_line;
         while (*src == ' ' || *src == '\t') {
             if (*src == ' ') indent += 1;
             else indent += 4;
@@ -580,6 +605,20 @@ void execute_line(const char *text, int line_num) {
                 freeToken(&next);
                 throw_error("SyntaxError", "Unexpected identifier '%s' on line %d", t.value, line_num);
             }
+        }
+        else if (t.type == TOKEN_QUESTION) {
+            Token name_tok = getNextToken(&cursor);
+            if (name_tok.type == TOKEN_IDENTIFIER) {
+                Token peek = peekToken(&cursor);
+                if (peek.type == TOKEN_EQUAL) {
+                    freeToken(&peek);
+                    Token eq = getNextToken(&cursor); freeToken(&eq);
+                    Token val_tok = getNextToken(&cursor); freeToken(&val_tok);
+                } else {
+                    freeToken(&peek);
+                }
+            }
+            freeToken(&name_tok);
         }
         else if (t.type == TOKEN_ERROR) {
             throw_error("SyntaxError", "Unexpected token '%s' on line %d", t.value ? t.value : "", line_num);
