@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Strict Content-Security-Policy -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self';">
+
+    <!-- OpenGraph Meta Tags for social sharing with absolute URLs -->
+    <meta property="og:title" content="VerScript - A High-Performance C-based Scripting Language">
+    <meta property="og:description" content="VerScript is an upcoming high-performance language with clean spaced colon syntax and powerful features.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://verscript.github.io/index.html">
+    <meta property="og:image" content="https://verscript.github.io/logo.png">
+
+    <title>VerScript Language</title>
+    <link rel="icon" type="image/x-icon" href="logo.ico">
+    <link rel="stylesheet" href="styles.css">
+    <script src="script.js" defer></script>
+</head>
+<body>
+    <header>
+        <div class="logo-container">
+            <img src="logo.png" alt="VerScript Logo">
+            <h1>VerScript</h1>
+        </div>
+        <nav>
+            <ul>
+                <li><a href="index.html">Home</a></li>
+                <li><a href="docs.html">Documentation</a></li>
+                <li><a href="https://github.com/verscript/verscript">GitHub</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main>
+        <div class="hero">
+            <h2>The High-Performance Scripting Language</h2>
+            <p>VerScript is an upcoming high-performance, lightweight, C-based scripting language designed for simplicity and speed.</p>
+            <a href="docs.html" class="btn">Read Documentation</a>
+            <a href="https://github.com/verscript/verscript" class="btn">View Source</a>
+        </div>
+
+        <section>
+            <h3>Why VerScript?</h3>
+            <p>VerScript brings a clean, spaced colon syntax with the power and performance of a custom C interpreter built with GCC.</p>
+            <ul>
+                <li><strong>Simple Syntax:</strong> Clean variable assignment with <code>variable : expression</code>.</li>
+                <li><strong>Built for Performance:</strong> Lightweight C-based interpreter architecture.</li>
+                <li><strong>Familiar Logic:</strong> Standard arithmetic, output statements, and comparisons.</li>
+            </ul>
+        </section>
+
+        <section>
+            <h3>Quick Example</h3>
+            <pre><code>! A simple VerScript example
+message : "Hello, World!"
+display message
+
+count : 10
+loop count
+    display "Loop iteration!"</code></pre>
+        </section>
+    </main>
+
+    <footer>
+        <p>&copy; 2026 VerScript Project. All rights reserved.</p>
+    </footer>
+</body>
+</html>
