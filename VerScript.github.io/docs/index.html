@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="VerScript language documentation — display, variables, math operators, and the prompt keyword.">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; font-src 'self' https://fonts.gstatic.com; style-src 'self' https://fonts.googleapis.com; img-src 'self' data:;">
+    <meta property="og:title" content="VerScript | Documentation">
+    <meta property="og:description" content="VerScript language documentation — display, variables, math operators, and the prompt keyword.">
+    <meta property="og:image" content="https://verscript.github.io/logo.png">
+    <meta property="og:url" content="https://verscript.github.io/docs/index.html">
+    <meta property="og:type" content="website">
+    <title>VerScript | Documentation</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;500;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../css/docs-style.css">
+</head>
+<body>
+
+    <nav>
+        <a href="../index.html" class="logo">VerScript</a>
+        <span class="nav-badge">Documentation V1.0</span>
+    </nav>
+
+    <div class="container">
+        <a href="../index.html" class="back-link" id="backLink">← Back to Home</a>        <h1>VerScript Documentation</h1>
+        <p class="intro-text">Welcome to the VerScript documentation. The language is built on a simple, spaced-function syntax that natively supports console IO, variable assignment, and mathematical evaluation.</p>
+
+        <h2>1. The <code>display</code> Keyword</h2>
+        <p>Output text, numbers, or variables directly to the terminal.</p>
+        <div class="code-block"><span class="token-keyword">display</span> <span class="token-string">"Hello World"</span>
+<span class="token-keyword">display</span> <span class="token-number">100</span></div>
+
+        <h2>2. Variables (<code>var : val</code>)</h2>
+        <p>Variables are dynamically typed strings, integers, or booleans. Assign them using a colon.</p>
+        <div class="code-block">name <span class="token-operator">:</span> <span class="token-string">"Alice"</span>
+age <span class="token-operator">:</span> <span class="token-number">25</span>
+is_active <span class="token-operator">:</span> <span class="token-keyword">true</span>
+<span class="token-keyword">display</span> name</div>
+
+        <h2>3. Mathematical Operators & String Concatenation</h2>
+        <p>VerScript supports standard arithmetic (<code>+</code>, <code>-</code>, <code>*</code>, <code>/</code>) seamlessly, as well as negative numbers and string concatenation.</p>
+        <div class="code-block">score <span class="token-operator">:</span> <span class="token-number">10</span> <span class="token-operator">+</span> <span class="token-number">-5</span>
+<span class="token-keyword">display</span> <span class="token-string">"Score: "</span> <span class="token-operator">+</span> score
+<span class="token-keyword">display</span> <span class="token-number">100</span> <span class="token-operator">/</span> <span class="token-number">4</span></div>
+
+        <h2>4. The <code>prompt</code> Keyword</h2>
+        <p>Make your terminal scripts interactive by asking the user for input.</p>
+        <div class="code-block"><span class="token-keyword">display</span> <span class="token-string">"Enter your name: "</span>
+<span class="token-keyword">prompt</span> username
+<span class="token-keyword">display</span> <span class="token-string">"Welcome, "</span>
+<span class="token-keyword">display</span> username</div>
+
+        <h2>5. The <code>loop</code> Keyword</h2>
+        <p>Repeat a block of code <code>n</code> times. The block of code must be indented using standard spacing (e.g. 2 spaces or a tab).</p>
+        <div class="code-block"><span class="token-keyword">loop</span> <span class="token-number">3</span>
+  <span class="token-keyword">display</span> <span class="token-string">"This repeats 3 times"</span></div>
+
+        <h2>6. The <code>iterate</code> Keyword</h2>
+        <p>Iterate an index variable between specified numeric limits. You can customize the iteration index or omit the start limit (which defaults to the variable's current value, or <code>0</code> if undefined).</p>
+        <div class="code-block"><span class="token-comment">! Full syntax (inclusive limits):</span>
+<span class="token-keyword">iterate</span> i <span class="token-keyword">from</span> <span class="token-number">1</span> <span class="token-keyword">to</span> <span class="token-number">5</span>
+  <span class="token-keyword">display</span> i
+
+<span class="token-comment">! Omitted start limit (starts at current value of variable, or 0 if undefined):</span>
+count <span class="token-operator">:</span> <span class="token-number">3</span>
+<span class="token-keyword">iterate</span> count <span class="token-keyword">to</span> <span class="token-number">6</span>
+  <span class="token-keyword">display</span> count</div>
+
+        <h3>Loop Step Constraint (<code>step s</code>)</h3>
+        <p>Customize the iteration increment step size across all loop types (<code>loop</code>, <code>iterate</code>, <code>while</code>, <code>until</code>) using the <code>step</code> keyword. The step value must be a positive integer greater than 0 and less than or equal to the loop size; otherwise a <code>LoopStepError</code> is thrown.</p>
+        <div class="code-block"><span class="token-comment">! Stepped iteration</span>
+<span class="token-keyword">iterate</span> i <span class="token-keyword">from</span> <span class="token-number">1</span> <span class="token-keyword">to</span> <span class="token-number">10</span> <span class="token-keyword">step</span> <span class="token-number">2</span>
+  <span class="token-keyword">display</span> i  <span class="token-comment">! Prints 1, 3, 5, 7, 9</span>
+
+<span class="token-comment">! Stepped while loop</span>
+val <span class="token-operator">:</span> <span class="token-number">0</span>
+<span class="token-keyword">while</span> val <span class="token-operator">&lt;</span> <span class="token-number">10</span> <span class="token-keyword">step</span> <span class="token-number">3</span>
+  val <span class="token-operator">:</span> val <span class="token-operator">+</span> <span class="token-number">1</span></div>
+
+        <h2>7. Comparison Operators</h2>
+        <p>VerScript supports standard comparison operators that evaluate to booleans (<code>true</code> / <code>false</code>):</p>
+        <ul>
+            <li><code>=</code> (Checks if values are equal)</li>
+            <li><code>x=</code> (Checks if values are not equal)</li>
+            <li><code>&gt;</code> (Greater than)</li>
+            <li><code>&lt;</code> (Less than)</li>
+            <li><code>&gt;=</code> (Greater than or equal to)</li>
+            <li><code>&lt;=</code> (Less than or equal to)</li>
+        </ul>
+        <div class="code-block">is_match <span class="token-operator">:</span> <span class="token-number">10</span> <span class="token-operator">=</span> <span class="token-number">10</span>
+<span class="token-keyword">display</span> is_match  <span class="token-comment">! Prints true</span>
+
+is_diff <span class="token-operator">:</span> <span class="token-number">5</span> <span class="token-operator">x=</span> <span class="token-number">10</span>
+<span class="token-keyword">display</span> is_diff   <span class="token-comment">! Prints true</span></div>
+
+        <h2>8. Conditionals (<code>if-else</code>)</h2>
+        <p>Control flow using standard conditional statements. Like loops, conditional branches execute indented blocks of code.</p>
+        <div class="code-block">val <span class="token-operator">:</span> <span class="token-number">15</span>
+<span class="token-keyword">if</span> val <span class="token-operator">=</span> <span class="token-number">10</span> <span class="token-keyword">then</span>
+  <span class="token-keyword">display</span> <span class="token-string">"Value is exactly 10"</span>
+<span class="token-keyword">else if</span> val <span class="token-operator">&gt;</span> <span class="token-number">10</span> <span class="token-keyword">then</span>
+  <span class="token-keyword">display</span> <span class="token-string">"Value is greater than 10"</span>
+<span class="token-keyword">else</span>
+  <span class="token-keyword">display</span> <span class="token-string">"Value is less than 10"</span></div>
+
+        <h2>9. Looping Conditionals (<code>while</code> &amp; <code>until</code>)</h2>
+        <p>Execute statement blocks dynamically based on expression checks:</p>
+        <ul>
+            <li><code>while</code>: Repeatedly runs while the condition evaluates to true.</li>
+            <li><code>until</code>: Repeatedly runs until the condition evaluates to true (i.e. while it is false).</li>
+        </ul>
+        <div class="code-block"><span class="token-comment">! While loop example</span>
+count <span class="token-operator">:</span> <span class="token-number">1</span>
+<span class="token-keyword">while</span> count <span class="token-operator">&lt;=</span> <span class="token-number">3</span>
+  <span class="token-keyword">display</span> <span class="token-string">"count: "</span> <span class="token-operator">+</span> count
+  count <span class="token-operator">:</span> count <span class="token-operator">+</span> <span class="token-number">1</span>
+
+<span class="token-comment">! Until loop example (runs until count2 is greater than 3)</span>
+count2 <span class="token-operator">:</span> <span class="token-number">1</span>
+<span class="token-keyword">until</span> count2 <span class="token-operator">&gt;</span> <span class="token-number">3</span>
+  <span class="token-keyword">display</span> <span class="token-string">"until count2: "</span> <span class="token-operator">+</span> count2
+  count2 <span class="token-operator">:</span> count2 <span class="token-operator">+</span> <span class="token-number">1</span></div>
+
+        <h2>10. Exception Handling &amp; Conditional Fallbacks (<code>do-unless</code>)</h2>
+        <p>The <code>do-unless</code> block supports both exception handling and conditional/watch execution.</p>
+
+        <h3>Exception Handling</h3>
+        <p>Catch runtime errors thrown by the compiler or interpreter. Errors can be caught by the generic keyword <code>error</code> or specific error types (such as <code>DivisionByZeroError</code>, <code>UndefinedVariableError</code>, <code>InvalidOperandError</code>, <code>IndentationError</code>, <code>LoopIterationError</code>, <code>LoopLimitError</code>, <code>LoopDirectionError</code>, or <code>SyntaxError</code>). Inside the <code>unless</code> block, the <code>error</code> keyword holds the name of the caught error.</p>
+        <div class="code-block"><span class="token-keyword">do</span>
+  <span class="token-keyword">display</span> <span class="token-string">"Trying division by zero..."</span>
+  val <span class="token-operator">:</span> <span class="token-number">10</span> <span class="token-operator">/</span> <span class="token-number">0</span>
+<span class="token-keyword">unless</span> DivisionByZeroError
+  <span class="token-keyword">display</span> <span class="token-string">"Caught error: "</span> <span class="token-operator">+</span> <span class="token-keyword">error</span>
+
+<span class="token-keyword">do</span>
+  <span class="token-keyword">display</span> <span class="token-string">"Accessing undefined variable..."</span>
+  <span class="token-keyword">display</span> missing_val
+<span class="token-keyword">unless</span> <span class="token-keyword">error</span>
+  <span class="token-keyword">display</span> <span class="token-string">"Caught a general error: "</span> <span class="token-operator">+</span> <span class="token-keyword">error</span></div>
+
+        <h3>Conditional &amp; Reactive Watch Execution</h3>
+        <p>The condition block supports two execution modes: <code>internal</code> and <code>external</code>.</p>
+        <ul>
+            <li><strong><code>unless external [bool]</code> (Default for booleans):</strong> Checks the condition beforehand. Once the <code>do</code> block starts, it runs to completion even if the condition is modified. If the condition was true initially, only the <code>unless</code> block is executed.</li>
+            <li><strong><code>unless internal [bool]</code> (Default for errors):</strong> Acts as a reactive watch. The condition is monitored after every statement inside the <code>do</code> block. If the condition becomes true at any point, execution of the <code>do</code> block stops immediately, and the <code>unless</code> block runs.</li>
+        </ul>
+
+        <p><strong>Example: Reactive Internal Watch</strong></p>
+        <div class="code-block">flag <span class="token-operator">:</span> <span class="token-keyword">false</span>
+<span class="token-keyword">do</span>
+  <span class="token-keyword">display</span> <span class="token-string">"Statement 1 runs"</span>
+  flag <span class="token-operator">:</span> <span class="token-keyword">true</span>
+  <span class="token-keyword">display</span> <span class="token-string">"Statement 2 does NOT run"</span>
+<span class="token-keyword">unless</span> <span class="token-keyword">internal</span> flag
+  <span class="token-keyword">display</span> <span class="token-string">"Watch triggered and unless block ran!"</span></div>
+
+        <p><strong>Example: External Pre-check</strong></p>
+        <div class="code-block">flag <span class="token-operator">:</span> <span class="token-keyword">false</span>
+<span class="token-keyword">do</span>
+  <span class="token-keyword">display</span> <span class="token-string">"Statement 1 runs"</span>
+  flag <span class="token-operator">:</span> <span class="token-keyword">true</span>
+  <span class="token-keyword">display</span> <span class="token-string">"Statement 2 runs (external watch does not stop it)"</span>
+<span class="token-keyword">unless</span> <span class="token-keyword">external</span> flag
+  <span class="token-keyword">display</span> <span class="token-string">"This won't run because flag was false initially"</span></div>
+
+        <h2>11. System Operators &amp; Error Criticality (Error Points)</h2>
+        <p>VerScript categorizes runtime errors into dynamic "Error Points" out of 10 to define their severity. Certain system block operators control how these errors are handled or skipped:</p>
+
+        <h3>Error Criticality Levels (Error Points)</h3>
+        <ul>
+            <li><strong>MemoryAllocationError (10 Points) - Critical:</strong> Thrown when dynamic memory allocation fails.</li>
+            <li><strong>SystemError (9 Points) - Critical:</strong> Thrown on engine level limits, e.g. jump stack overflow.</li>
+            <li><strong>SyntaxError (8 Points) - Critical:</strong> Thrown on structurally invalid statement layout.</li>
+            <li><strong>IndentationError (8 Points) - Critical:</strong> Thrown on irregular or invalid statement indentation.</li>
+            <li><strong>DivisionByZeroError (5 Points) - Moderate/Non-Critical:</strong> Thrown on dividing numbers by zero.</li>
+            <li><strong>InvalidOperandError (4 Points) - Moderate/Non-Critical:</strong> Thrown on mismatching expression operand types.</li>
+            <li><strong>LoopIterationError (3 Points) - Low/Non-Critical:</strong> Thrown on non-numeric loop bound arguments.</li>
+            <li><strong>LoopLimitError (3 Points) - Low/Non-Critical:</strong> Thrown on non-numeric loop boundary ranges.</li>
+            <li><strong>LoopDirectionError (3 Points) - Low/Non-Critical:</strong> Thrown when loop start bounds are greater than end limits.</li>
+            <li><strong>LoopStepError (3 Points) - Low/Non-Critical:</strong> Thrown on invalid step arguments (non-numeric, &lt;= 0, or larger than loop size).</li>
+            <li><strong>UndefinedVariableError (2 Points) - Low/Non-Critical:</strong> Thrown on attempting to retrieve an uninitialized variable.</li>
+        </ul>
+
+        <h3>System Block Operators</h3>
+        <ul>
+            <li><strong><code>ForceErrors</code>:</strong> Disables error suppression and catch blocks inside its scope. Any error occurring within this block displays immediately and exits execution.</li>
+            <li><strong><code>CriticalErrors</code>:</strong> Only triggers halting/displaying for critical errors (8+ Error Points). Non-critical errors (1-7 Error Points) are ignored, and the faulty line is skipped.</li>
+            <li><strong><code>SuppressErrors</code>:</strong> Skips any statement line or block that triggers an error. Execution proceeds cleanly to the next sequential instruction.</li>
+        </ul>
+
+        <p><strong>Example: System Operators Showcase</strong></p>
+        <div class="code-block"><span class="token-comment">! Suppressing all errors</span>
+<span class="token-keyword">SuppressErrors</span>
+  val <span class="token-operator">:</span> <span class="token-number">10</span> <span class="token-operator">/</span> <span class="token-number">0</span>   <span class="token-comment">! Error is silently skipped</span>
+  <span class="token-keyword">display</span> <span class="token-string">"This line runs successfully!"</span>
+
+<span class="token-comment">! Restricting to Critical errors</span>
+<span class="token-keyword">CriticalErrors</span>
+  val2 <span class="token-operator">:</span> missing_val <span class="token-comment">! Non-critical UndefinedVariableError (2 Points) is skipped</span>
+  <span class="token-keyword">display</span> <span class="token-string">"CriticalErrors bypassed moderate error!"</span></div>
+
+        <h2>12. The <code>throw</code> Statement</h2>
+        <p>VerScript allows manual triggering of exceptions. The target must be a valid registered error name. If an unregistered name is used, a <code>SyntaxError</code> is raised stating that the error name is invalid. You can also rethrow the active error inside an <code>unless</code> block via <code>throw error</code>.</p>
+        <div class="code-block"><span class="token-keyword">do</span>
+  <span class="token-keyword">display</span> <span class="token-string">"Throwing custom exception..."</span>
+  <span class="token-keyword">throw</span> DivisionByZeroError
+<span class="token-keyword">unless</span> DivisionByZeroError
+  <span class="token-keyword">display</span> <span class="token-string">"Caught thrown exception: "</span> <span class="token-operator">+</span> <span class="token-keyword">error</span>
+
+<span class="token-keyword">do</span>
+  <span class="token-keyword">display</span> <span class="token-string">"Throwing invalid error..."</span>
+  <span class="token-keyword">throw</span> InvalidErrorName
+<span class="token-keyword">unless</span> SyntaxError
+  <span class="token-keyword">display</span> <span class="token-string">"Caught invalid throw: "</span> <span class="token-operator">+</span> <span class="token-keyword">error</span></div>
+
+        <h2>13. VS#-1B AI Neural Engine (1 Billion Parameters)</h2>
+        <p>VerScript is integrated with <strong>VS#-1B</strong>, a custom-built 1-Billion parameter neural network architecture designed for real-time code synthesis, automated error repair, line-by-line annotation, and interactive logic explanation.</p>
+        <ul>
+            <li><strong>Model Architecture:</strong> 24 Transformer Layers, 32 Attention Heads, 2048 Embedding Dimensions.</li>
+            <li><strong>Parameter Scale:</strong> 1,000,000,000 (1.0 Billion Parameters).</li>
+            <li><strong>Capabilities:</strong> Auto-indentation, syntax repair, inline line-by-line comment generation, and interactive logic synthesis.</li>
+        </ul>
+
+        <h2>14. Multiline Comments (<code>!! ... !!</code>)</h2>
+        <p>VerScript supports block multiline comments delimited by <code>!!</code>. Any code or text enclosed between opening <code>!!</code> and closing <code>!!</code> is ignored by the compiler across multiple lines.</p>
+        <div class="code-block"><span class="token-comment">!!
+  VerScript Multiline Comment Block
+  Line 1: Documentation notes
+  Line 2: Temporary code block disabled
+!!</span>
+<span class="token-keyword">display</span> <span class="token-string">"Code execution continues after block comment!"</span></div>
+
+        <h2>15. Command Attributes &amp; Keyword Arguments (<code>?attr</code>, <code>kwargs</code>)</h2>
+        <p>Commands in VerScript support optional modifiers and key-value attributes attached using the <code>?</code> operator or direct <code>kwarg=value</code> syntax.</p>
+
+        <h3>Attribute Format Syntax</h3>
+        <ul>
+            <li><strong>Boolean Flags (<code>?flag</code>):</strong> Specifying a flag toggles it to <code>true</code> (non-default behavior).</li>
+            <li><strong>Key-Value Attributes (<code>?key=val</code> / <code>?key="val"</code>):</strong> Passes custom parameters and settings to statements.</li>
+        </ul>
+
+        <h3>Supported Command Attributes Table</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Command</th>
+                    <th>Attribute / Kwarg</th>
+                    <th>Description &amp; Allowed Values</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><code>display</code></td>
+                    <td><code>?color="green"|"red"|"yellow"|"blue"|"purple"|"cyan"</code></td>
+                    <td>ANSI colorized terminal output.</td>
+                </tr>
+                <tr>
+                    <td><code>display</code></td>
+                    <td><code>?newline=false</code> (or <code>?inline</code>)</td>
+                    <td>Suppresses trailing newline character for inline printing.</td>
+                </tr>
+                <tr>
+                    <td><code>prompt</code></td>
+                    <td><code>?default="value"</code></td>
+                    <td>Provides a fallback default value if user enters empty input.</td>
+                </tr>
+                <tr>
+                    <td><code>iterate</code> / <code>loop</code></td>
+                    <td><code>?step=n</code>, <code>?reverse</code></td>
+                    <td>Custom step increment and reverse iteration direction.</td>
+                </tr>
+                <tr>
+                    <td><code>throw</code></td>
+                    <td><code>?msg="custom message"</code></td>
+                    <td>Attaches a custom error message to thrown exceptions.</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <p><strong>Example Showcase: Attributes &amp; Multiline Comments</strong></p>
+        <div class="code-block"><span class="token-comment">!!
+  VerScript Language Showcase — v1.2.0
+  Featuring:
+    1: Multiline Comments and Single-line Comments
+    2: Command Attributes (?color, ?newline=false, ?default, ?msg)
+    3: Stepped Iteration &amp; Loops (iterate i from x to y step z)
+    4: Exception Handling (do ... unless) &amp; Custom Throws
+    5: System Block Operators (SuppressErrors, CriticalErrors)
+!!</span>
+
+<span class="token-keyword">display</span> <span class="token-string">"=== 1. ANSI Color &amp; Formatting Attributes ==="</span> <span class="token-operator">?color="cyan"</span>
+<span class="token-keyword">display</span> <span class="token-string">"Success: VerScript Engine Online!"</span> <span class="token-operator">?color="green"</span>
+<span class="token-keyword">display</span> <span class="token-string">"Warning: High memory utilization detected."</span> <span class="token-operator">?color="yellow"</span>
+<span class="token-keyword">display</span> <span class="token-string">"Error: DivisionByZero handled gracefully."</span> <span class="token-operator">?color="red"</span>
+
+<span class="token-keyword">display</span> <span class="token-string">"=== 2. Inline Printing with ?newline=false ==="</span> <span class="token-operator">?color="purple"</span>
+<span class="token-keyword">display</span> <span class="token-string">"Loading modules: ["</span> <span class="token-operator">?newline=false</span> <span class="token-operator">?color="cyan"</span>
+<span class="token-keyword">display</span> <span class="token-string">"Core, "</span> <span class="token-operator">?newline=false</span> <span class="token-operator">?color="yellow"</span>
+<span class="token-keyword">display</span> <span class="token-string">"Lexer, "</span> <span class="token-operator">?newline=false</span> <span class="token-operator">?color="yellow"</span>
+<span class="token-keyword">display</span> <span class="token-string">"VS#-1B Neural Engine] "</span> <span class="token-operator">?newline=false</span> <span class="token-operator">?color="cyan"</span>
+<span class="token-keyword">display</span> <span class="token-string">"Done!"</span> <span class="token-operator">?color="green"</span>
+
+<span class="token-keyword">display</span> <span class="token-string">"=== 3. Stepped Iteration Showcase ==="</span> <span class="token-operator">?color="cyan"</span>
+<span class="token-keyword">iterate</span> count <span class="token-keyword">from</span> <span class="token-number">1</span> <span class="token-keyword">to</span> <span class="token-number">10</span> <span class="token-keyword">step</span> <span class="token-number">2</span>
+  <span class="token-keyword">display</span> <span class="token-string">"Iteration Step: "</span> <span class="token-operator">+</span> count <span class="token-operator">?color="cyan"</span>
+
+<span class="token-keyword">display</span> <span class="token-string">"=== 4. Exception Handling &amp; Custom Throws ==="</span> <span class="token-operator">?color="purple"</span>
+<span class="token-keyword">do</span>
+  <span class="token-keyword">display</span> <span class="token-string">"Triggering custom exception with ?msg attribute..."</span> <span class="token-operator">?color="yellow"</span>
+  <span class="token-keyword">throw</span> DivisionByZeroError <span class="token-operator">?msg="Division by zero in calculate_ratio()"</span>
+<span class="token-keyword">unless</span> DivisionByZeroError
+  <span class="token-keyword">display</span> <span class="token-string">"Caught Exception: "</span> <span class="token-operator">+</span> <span class="token-keyword">error</span> <span class="token-operator">?color="green"</span>
+
+<span class="token-keyword">display</span> <span class="token-string">"=== 5. Error Suppression Block Operator ==="</span> <span class="token-operator">?color="cyan"</span>
+<span class="token-keyword">SuppressErrors</span>
+  <span class="token-keyword">display</span> <span class="token-string">"Running invalid operation under SuppressErrors..."</span> <span class="token-operator">?color="yellow"</span>
+  invalid_val <span class="token-operator">:</span> <span class="token-number">10</span> <span class="token-operator">/</span> <span class="token-number">0</span>
+  <span class="token-keyword">display</span> <span class="token-string">"Division by zero bypassed cleanly!"</span> <span class="token-operator">?color="green"</span>
+
+<span class="token-keyword">display</span> <span class="token-string">"=== VerScript Execution Complete ==="</span> <span class="token-operator">?color="green"</span></div>
+    </div>
+
+
+</body>
+</html>
