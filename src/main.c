@@ -455,31 +455,45 @@ void parse_lines(const char *buffer) {
         char clean_line[1024] = "";
         int clean_pos = 0;
         char *src_ptr = raw_line;
+        int in_string = 0;
 
         while (*src_ptr != '\0') {
-            if (in_multiline_comment) {
-                if (src_ptr[0] == '!' && src_ptr[1] == '!') {
-                    in_multiline_comment = 0;
-                    src_ptr += 2;
-                } else {
-                    src_ptr++;
-                }
+            if (!in_multiline_comment && *src_ptr == '"') {
+                in_string = !in_string;
+                clean_line[clean_pos++] = *src_ptr++;
             } else {
-                if (src_ptr[0] == '!' && src_ptr[1] == '!') {
-                    in_multiline_comment = 1;
-                    src_ptr += 2;
+                if (in_multiline_comment) {
+                    if (src_ptr[0] == '!' && src_ptr[1] == '!') {
+                        in_multiline_comment = 0;
+                        src_ptr += 2;
+                    } else {
+                        src_ptr++;
+                    }
                 } else {
-                    clean_line[clean_pos++] = *src_ptr++;
+                    if (!in_string && src_ptr[0] == '!' && src_ptr[1] == '!') {
+                        in_multiline_comment = 1;
+                        src_ptr += 2;
+                    } else if (!in_string && src_ptr[0] == '!' && src_ptr[1] != '!') {
+                        // single line comment
+                        break;
+                    } else {
+                        clean_line[clean_pos++] = *src_ptr++;
+                    }
                 }
             }
         }
         clean_line[clean_pos] = '\0';
 
         int indent = 0;
+        char *src_indent = raw_line;
+        while (*src_indent == ' ' || *src_indent == '\t') {
+            if (*src_indent == ' ') indent += 1;
+            else indent += 4;
+            src_indent++;
+        }
+
         char *src = clean_line;
         while (*src == ' ' || *src == '\t') {
-            if (*src == ' ') indent += 1;
-            else indent += 4;
             src++;
         }
 
