@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VerScript Documentation</title>
+
+    <!-- Strict Content Security Policy -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self'; style-src 'self'; script-src 'self'">
+
+    <!-- OpenGraph Meta Tags -->
+    <meta property="og:title" content="VerScript - A custom C-based scripting language">
+    <meta property="og:description" content="Documentation and homepage for VerScript.">
+    <meta property="og:url" content="https://verscript.github.io/">
+    <meta property="og:image" content="https://verscript.github.io/logo.png">
+    <meta property="og:type" content="website">
+
+    <!-- External CSS -->
+    <link rel="stylesheet" href="style.css">
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/x-icon" href="logo.ico">
+</head>
+<body>
+    <header>
+        <div class="logo-container">
+            <img src="logo.png" alt="VerScript Logo" class="logo">
+            <h1>VerScript</h1>
+        </div>
+        <p>A lightweight, C-based scripting language.</p>
+    </header>
+
+    <main>
+        <section id="introduction">
+            <h2>Introduction</h2>
+            <p>VerScript is an upcoming high-performance language. It features a custom, lightweight, C-based interpreter. Its syntax is simple and easy to read, with indentation-sensitive block scoping.</p>
+        </section>
+
+        <section id="features">
+            <h2>Key Features</h2>
+
+            <div class="feature">
+                <h3>Variables</h3>
+                <p>Variable assignment uses a spaced colon syntax.</p>
+                <div class="code-block">
+                    <code>
+x : 42<br>
+name : "World"
+                    </code>
+                </div>
+            </div>
+
+            <div class="feature">
+                <h3>Input and Output</h3>
+                <p>Output statements use <code>display</code>. Input statements use <code>prompt</code> to store keyboard input into variables.</p>
+                <div class="code-block">
+                    <code>
+display "Hello, " + name<br>
+prompt user_input
+                    </code>
+                </div>
+            </div>
+
+            <div class="feature">
+                <h3>Comments</h3>
+                <p>Single-line comments start with <code>!</code>. Multiline comments are enclosed in <code>!! ... !!</code>.</p>
+                <div class="code-block">
+                    <code>
+! This is a single-line comment<br>
+!!<br>
+This is a<br>
+multiline comment<br>
+!!
+                    </code>
+                </div>
+            </div>
+
+            <div class="feature">
+                <h3>Attributes</h3>
+                <p>VerScript supports command attributes like <code>?color</code>, <code>?newline</code>, and <code>?msg</code> for formatting and configuration.</p>
+                <div class="code-block">
+                    <code>
+display "Success!" ?color="green"<br>
+display "Loading... " ?newline=false
+                    </code>
+                </div>
+            </div>
+
+            <div class="feature">
+                <h3>Loops & Iteration</h3>
+                <p>Loops can be executed using <code>loop</code>, <code>while</code>, <code>until</code>, or <code>iterate</code> blocks.</p>
+                <div class="code-block">
+                    <code>
+iterate i from 1 to 10 step 2<br>
+&nbsp;&nbsp;display "Iteration: " + i
+                    </code>
+                </div>
+            </div>
+
+            <div class="feature">
+                <h3>Exception Handling</h3>
+                <p>VerScript features powerful <code>do ... unless</code> exception handling.</p>
+                <div class="code-block">
+                    <code>
+do<br>
+&nbsp;&nbsp;throw DivisionByZeroError ?msg="Division by zero!"<br>
+unless DivisionByZeroError<br>
+&nbsp;&nbsp;display "Caught Exception: " + error
+                    </code>
+                </div>
+            </div>
+
+            <div class="feature">
+                <h3>System Block Operators</h3>
+                <p>System blocks like <code>SuppressErrors</code> can catch and suppress errors gracefully.</p>
+                <div class="code-block">
+                    <code>
+SuppressErrors<br>
+&nbsp;&nbsp;invalid_val : 10 / 0
+                    </code>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <p>&copy; 2026 VerScript Project</p>
+    </footer>
+
+    <!-- External JS -->
+    <script src="script.js"></script>
+</body>
+</html>
