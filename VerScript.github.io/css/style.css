@@ -1,0 +1,126 @@
+/* css/style.css */
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    color: #333;
+    background-color: #f9f9f9;
+}
+
+header {
+    background-color: #333;
+    color: #fff;
+    padding: 1rem 2rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.logo-container {
+    display: flex;
+    align-items: center;
+}
+
+.logo {
+    height: 40px;
+    margin-right: 10px;
+}
+
+nav .nav-links {
+    list-style: none;
+    display: flex;
+    gap: 1.5rem;
+    margin: 0;
+    padding: 0;
+}
+
+nav .nav-links a {
+    color: #fff;
+    text-decoration: none;
+    font-weight: bold;
+}
+
+.mobile-menu-btn {
+    display: none;
+    background: none;
+    border: none;
+    cursor: pointer;
+}
+
+.mobile-menu-btn .bar {
+    display: block;
+    width: 25px;
+    height: 3px;
+    background-color: #fff;
+    margin: 5px 0;
+}
+
+.hero {
+    text-align: center;
+    padding: 4rem 2rem;
+    background-color: #fff;
+    border-bottom: 1px solid #ddd;
+}
+
+.hero h2 {
+    font-size: 2.5rem;
+    margin-bottom: 1rem;
+}
+
+.cta-button {
+    display: inline-block;
+    padding: 10px 20px;
+    background-color: #0056b3;
+    color: #fff;
+    text-decoration: none;
+    border-radius: 5px;
+    font-size: 1.2rem;
+    margin-top: 1rem;
+}
+
+.features {
+    display: flex;
+    justify-content: center;
+    gap: 2rem;
+    padding: 4rem 2rem;
+    flex-wrap: wrap;
+}
+
+.feature-card {
+    background-color: #fff;
+    padding: 2rem;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    width: 300px;
+    text-align: center;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+footer {
+    text-align: center;
+    padding: 1rem;
+    background-color: #333;
+    color: #fff;
+}
+
+@media (max-width: 768px) {
+    .nav-links {
+        display: none !important;
+        flex-direction: column;
+        position: absolute;
+        top: 70px;
+        left: 0;
+        right: 0;
+        background-color: #333;
+        text-align: center;
+        padding: 1rem 0;
+    }
+
+    .nav-links.active {
+        display: flex !important;
+    }
+
+    .mobile-menu-btn {
+        display: block;
+    }
+}
