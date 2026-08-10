@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VerScript Documentation</title>
+    <!-- Strict Content-Security-Policy -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'">
+
+    <!-- OpenGraph Meta Tags for Social Sharing -->
+    <meta property="og:title" content="VerScript Documentation">
+    <meta property="og:description" content="Official documentation for VerScript, a high-performance C-based scripting language.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://verscript.github.io/docs/">
+    <meta property="og:image" content="https://verscript.github.io/logo.png">
+
+    <!-- External CSS -->
+    <link rel="stylesheet" href="../css/docs-style.css">
+</head>
+<body>
+    <header>
+        <div class="logo-container">
+            <img src="../logo.png" alt="VerScript Logo" class="logo">
+            <h1>VerScript Docs</h1>
+        </div>
+        <nav>
+            <button id="mobile-menu-btn" class="mobile-menu-btn" aria-label="Toggle Menu">
+                <span class="bar"></span>
+                <span class="bar"></span>
+                <span class="bar"></span>
+            </button>
+            <ul id="nav-links" class="nav-links">
+                <li><a href="../index.html">Home</a></li>
+                <li><a href="index.html">Documentation</a></li>
+                <li><a href="https://github.com/VerScript/verscript">GitHub</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <div class="docs-layout">
+        <aside class="sidebar">
+            <ul>
+                <li><a href="#getting-started">Getting Started</a></li>
+                <li><a href="#variables-io">Variables & I/O</a></li>
+                <li><a href="#comments">Comments</a></li>
+                <li><a href="#arithmetic">Arithmetic</a></li>
+                <li><a href="#attributes">Command Attributes</a></li>
+                <li><a href="#loops">Loops & Iteration</a></li>
+                <li><a href="#exceptions">Exception Handling</a></li>
+                <li><a href="#operators">System Block Operators</a></li>
+            </ul>
+        </aside>
+
+        <main class="content">
+            <section id="getting-started">
+                <h2>Getting Started</h2>
+                <p>VerScript is built using the GCC compiler. To compile the interpreter, use the provided Make commands:</p>
+                <ul>
+                    <li><code>make</code> : Compiles the `verscript` executable.</li>
+                    <li><code>make clean</code> : Removes compilation artifacts to ensure fresh builds.</li>
+                </ul>
+            </section>
+
+            <section id="variables-io">
+                <h2>Variables & I/O</h2>
+                <p>VerScript uses a spaced colon syntax for variable assignment.</p>
+                <pre><code>name : "World"
+x : 42</code></pre>
+
+                <h3>Output Statements</h3>
+                <p>Use the <code>display</code> keyword to output messages and variables.</p>
+                <pre><code>display "Hello, " + name
+display x</code></pre>
+
+                <h3>Input Statements</h3>
+                <p>Use the <code>prompt</code> keyword to receive keyboard input.</p>
+                <pre><code>prompt user_input</code></pre>
+            </section>
+
+            <section id="comments">
+                <h2>Comments</h2>
+                <p>Single-line comments are denoted by <code>!</code>. Any text following it on the same line is ignored.</p>
+                <pre><code>! This is a single line comment</code></pre>
+
+                <p>Multiline comments use <code>!!</code> at the beginning and end of the comment block.</p>
+                <pre><code>!!
+  This is a
+  multiline comment
+!!</code></pre>
+            </section>
+
+            <section id="arithmetic">
+                <h2>Arithmetic</h2>
+                <p>VerScript supports standard simple arithmetic operations: addition (<code>+</code>), subtraction (<code>-</code>), multiplication (<code>*</code>), and division (<code>/</code>).</p>
+            </section>
+
+            <section id="attributes">
+                <h2>Command Attributes</h2>
+                <p>Commands can take attributes like <code>?color</code> or <code>?newline=false</code> to modify their behavior.</p>
+                <pre><code>display "Success: Engine Online!" ?color="green"
+display "Loading... " ?newline=false ?color="cyan"</code></pre>
+            </section>
+
+            <section id="loops">
+                <h2>Loops & Iteration</h2>
+                <p>Use python-like indentation with <code>iterate</code> to create loops with specific steps.</p>
+                <pre><code>iterate count from 1 to 10 step 2
+  display "Iteration Step: " + count ?color="cyan"</code></pre>
+            </section>
+
+            <section id="exceptions">
+                <h2>Exception Handling</h2>
+                <p>VerScript supports <code>do ... unless</code> blocks for exception handling and triggering custom exceptions using <code>throw</code>.</p>
+                <pre><code>do
+  throw DivisionByZeroError ?msg="Division by zero"
+unless DivisionByZeroError
+  display "Caught Exception: " + error ?color="green"</code></pre>
+            </section>
+
+            <section id="operators">
+                <h2>System Block Operators</h2>
+                <p>Special system blocks like <code>SuppressErrors</code> and <code>CriticalErrors</code> can control execution flow when errors occur.</p>
+                <pre><code>SuppressErrors
+  invalid_val : 10 / 0
+  display "Division by zero bypassed cleanly!" ?color="green"</code></pre>
+            </section>
+        </main>
+    </div>
+
+    <footer>
+        <p>&copy; 2026 VerScript Project</p>
+    </footer>
+
+    <!-- External JS -->
+    <script src="../js/main.js"></script>
+</body>
+</html>
