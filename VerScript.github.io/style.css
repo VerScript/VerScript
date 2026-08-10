@@ -1,0 +1,104 @@
+/* VerScript Documentation Styles */
+
+:root {
+    --primary-color: #2c3e50;
+    --secondary-color: #18bc9c;
+    --background-color: #f4f7f6;
+    --text-color: #333;
+    --code-bg: #e8ecef;
+    --code-color: #c7254e;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    line-height: 1.6;
+    margin: 0;
+    padding: 0;
+    background-color: var(--background-color);
+    color: var(--text-color);
+}
+
+header {
+    background-color: var(--primary-color);
+    color: white;
+    padding: 2rem 0;
+    text-align: center;
+}
+
+.logo-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 15px;
+}
+
+.logo {
+    width: 60px;
+    height: 60px;
+}
+
+header h1 {
+    margin: 0;
+    font-size: 2.5rem;
+}
+
+header p {
+    font-size: 1.2rem;
+    margin-top: 10px;
+    color: #ecf0f1;
+}
+
+main {
+    max-width: 800px;
+    margin: 2rem auto;
+    padding: 0 20px;
+    background: white;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+    padding-bottom: 2rem;
+}
+
+section {
+    padding: 20px;
+}
+
+h2 {
+    color: var(--primary-color);
+    border-bottom: 2px solid var(--secondary-color);
+    padding-bottom: 10px;
+    margin-top: 30px;
+}
+
+h3 {
+    color: var(--secondary-color);
+}
+
+.feature {
+    margin-bottom: 30px;
+}
+
+.code-block {
+    background-color: var(--code-bg);
+    padding: 15px;
+    border-radius: 5px;
+    overflow-x: auto;
+    font-family: 'Courier New', Courier, monospace;
+    color: var(--code-color);
+    border-left: 4px solid var(--secondary-color);
+}
+
+code {
+    font-family: 'Courier New', Courier, monospace;
+    background-color: var(--code-bg);
+    padding: 2px 4px;
+    border-radius: 3px;
+    color: var(--code-color);
+}
+
+footer {
+    text-align: center;
+    padding: 20px;
+    background-color: var(--primary-color);
+    color: white;
+    margin-top: 40px;
+}
