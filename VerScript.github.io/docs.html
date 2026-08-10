@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Strict Content-Security-Policy -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self';">
+
+    <!-- OpenGraph Meta Tags for social sharing with absolute URLs -->
+    <meta property="og:title" content="VerScript Documentation">
+    <meta property="og:description" content="Official documentation for VerScript, a high-performance C-based scripting language.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://verscript.github.io/docs.html">
+    <meta property="og:image" content="https://verscript.github.io/logo.png">
+
+    <title>VerScript Documentation</title>
+    <link rel="icon" type="image/x-icon" href="logo.ico">
+    <link rel="stylesheet" href="styles.css">
+    <script src="script.js" defer></script>
+</head>
+<body>
+    <header>
+        <div class="logo-container">
+            <img src="logo.png" alt="VerScript Logo">
+            <h1>VerScript</h1>
+        </div>
+        <nav>
+            <ul>
+                <li><a href="index.html">Home</a></li>
+                <li><a href="docs.html">Documentation</a></li>
+                <li><a href="https://github.com/verscript/verscript">GitHub</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main>
+        <h2>VerScript Documentation</h2>
+        <p>Welcome to the official documentation for VerScript. VerScript is a custom, lightweight, C-based scripting language.</p>
+
+        <section>
+            <h3>Language Basics</h3>
+            <h4>Variable Assignment</h4>
+            <p>Variables are assigned using spaced colon syntax: <code>variable_name : expression</code></p>
+            <pre><code>x : 42
+name : "World"</code></pre>
+
+            <h4>Output Statements</h4>
+            <p>Use the <code>display</code> keyword to print messages or variables.</p>
+            <pre><code>display "Hello, World!"
+display name</code></pre>
+
+            <h4>Input Statements</h4>
+            <p>Use the <code>prompt</code> keyword to store keyboard input into variables.</p>
+            <pre><code>prompt user_input
+display user_input</code></pre>
+
+            <h4>Comments</h4>
+            <p>Single-line comments are prefixed with <code>!</code>. Multiline comments are enclosed in <code>!!</code>.</p>
+            <pre><code>! This is a single-line comment
+!!
+This is a
+multiline comment
+!!</code></pre>
+
+            <h4>Arithmetic</h4>
+            <p>VerScript supports simple arithmetic operations: <code>+</code>, <code>-</code>, <code>*</code>, and <code>/</code>.</p>
+            <pre><code>result : 10 + 5 * 2</code></pre>
+        </section>
+
+        <section>
+            <h3>Control Flow</h3>
+            <h4>Conditionals</h4>
+            <p>VerScript supports standard conditional structures and comparisons (<code>=</code>, <code>x=</code>, <code>&gt;</code>, <code>&lt;</code>, <code>&gt;=</code>, <code>&lt;=</code>).</p>
+            <pre><code>if x > 10
+    display "x is large"
+else if x = 10
+    display "x is exactly 10"
+else
+    display "x is small"</code></pre>
+
+            <h4>Loops</h4>
+            <p>VerScript supports loop constructs such as <code>loop n</code> and <code>iterate</code>.</p>
+            <pre><code>loop 5
+    display "This prints 5 times"
+
+iterate i from 1 to 5
+    display i</code></pre>
+            <p>Loops and workflows can also be controlled using the <code>step</code> constraint.</p>
+        </section>
+
+        <section>
+            <h3>Exception Handling</h3>
+            <p>Use <code>do</code> and <code>unless</code> for handling named compiler errors and runtime exceptions.</p>
+            <pre><code>do
+    ! block that might fail
+unless ErrorName
+    ! fallback logic</code></pre>
+            <p>System operators such as <code>ForceErrors</code>, <code>CriticalErrors</code>, and <code>SuppressErrors</code>, along with the <code>throw</code> keyword, manage execution flow under error conditions.</p>
+        </section>
+
+    </main>
+
+    <footer>
+        <p>&copy; 2026 VerScript Project. All rights reserved.</p>
+    </footer>
+</body>
+</html>
