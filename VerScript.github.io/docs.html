@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VerScript Documentation</title>
+
+    <!-- Strict CSP -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests;">
+
+    <!-- OpenGraph tags -->
+    <meta property="og:title" content="VerScript Documentation">
+    <meta property="og:description" content="Documentation and features for VerScript language.">
+    <meta property="og:url" content="https://verscript.github.io/docs.html">
+    <meta property="og:type" content="article">
+    <meta property="og:image" content="https://verscript.github.io/logo.png">
+
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <img id="logo" src="logo.png" alt="VerScript Logo">
+        <h1>VerScript Documentation</h1>
+    </header>
+    <nav>
+        <a href="index.html">Home</a>
+        <a href="docs.html">Documentation</a>
+    </nav>
+    <main>
+        <section>
+            <h2>Language Features</h2>
+
+            <article>
+                <h3>Variable Assignment</h3>
+                <p>Spaced colon syntax:</p>
+                <pre><code>x : 42
+name : "World"</code></pre>
+            </article>
+
+            <article>
+                <h3>Input/Output</h3>
+                <p>Display and prompt:</p>
+                <pre><code>display "message"
+prompt user_input</code></pre>
+                <p>Command Attributes for display:</p>
+                <pre><code>display "Success!" ?color="green"
+display "Loading " ?newline=false</code></pre>
+            </article>
+
+            <article>
+                <h3>Comments</h3>
+                <p>Single line comments use <code>!</code> and multiline comments are enclosed in <code>!! ... !!</code>.</p>
+            </article>
+
+            <article>
+                <h3>Loops</h3>
+                <p>Iterating ranges:</p>
+                <pre><code>iterate i from 1 to 10 step 2
+  display "Value: " + i</code></pre>
+            </article>
+
+            <article>
+                <h3>Exception Handling</h3>
+                <p>Using <code>do ... unless</code> blocks:</p>
+                <pre><code>do
+  throw DivisionByZeroError ?msg="Division by zero"
+unless DivisionByZeroError
+  display "Caught: " + error</code></pre>
+            </article>
+        </section>
+    </main>
+    <footer>
+        <p>&copy; 2026 VerScript Project</p>
+    </footer>
+    <script src="script.js"></script>
+</body>
+</html>
