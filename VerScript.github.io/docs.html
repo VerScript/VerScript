@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VerScript Documentation</title>
+
+    <!-- Strict CSP -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests;">
+
+    <!-- OpenGraph tags -->
+    <meta property="og:title" content="VerScript Documentation">
+    <meta property="og:description" content="Documentation and features for VerScript language.">
+    <meta property="og:url" content="https://verscript.github.io/docs.html">
+    <meta property="og:type" content="article">
+    <meta property="og:image" content="https://verscript.github.io/logo.png">
+
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <img id="logo" src="logo.png" alt="VerScript Logo">
+        <h1>VerScript Documentation</h1>
+    </header>
+    <nav>
+        <a href="index.html">Home</a>
+        <a href="docs.html">Documentation</a>
+    </nav>
+    <main>
+        <section>
+            <h2>Language Features</h2>
+
+            <article>
+                <h3>Variable Assignment</h3>
+                <p>VerScript uses a spaced colon syntax for assignment:</p>
+                <pre><code>x : 42
+name : "World"</code></pre>
+            </article>
+
+            <article>
+                <h3>Input and Output</h3>
+                <p>Display text or variable values and prompt for input:</p>
+                <pre><code>display "Enter your name:"
+prompt user_name
+display "Hello, " + user_name</code></pre>
+                <p>Command Attributes for display styling:</p>
+                <pre><code>display "Success!" ?color="green"
+display "Loading " ?newline=false</code></pre>
+            </article>
+
+            <article>
+                <h3>Comments</h3>
+                <p>Single-line comments are prefixed with <code>!</code> and multi-line comments are enclosed within <code>!! ... !!</code>.</p>
+                <pre><code>! This is a single-line comment
+!!
+This is a
+multi-line comment
+!!</code></pre>
+            </article>
+
+            <article>
+                <h3>Comparison and Conditionals</h3>
+                <p>Compare variables using standard operators (<code>=, x=, >, <, >=, <=</code>).</p>
+                <p>If, Else If, and Else blocks evaluate conditionals using Python-style indentation:</p>
+                <pre><code>if x > 10
+  display "x is greater than 10"
+else if x = 10
+  display "x is exactly 10"
+else
+  display "x is less than 10"</code></pre>
+            </article>
+
+            <article>
+                <h3>Loops and Iteration</h3>
+                <p>Iterate ranges or repeat operations with <code>loop</code>, <code>iterate</code>, <code>while</code>, or <code>until</code>.</p>
+                <pre><code>! Loop 5 times
+loop 5
+  display "Hello!"
+
+! Iterate with a step
+iterate i from 1 to 10 step 2
+  display "Value: " + i
+
+! While loop
+while x < 5
+  x : x + 1</code></pre>
+            </article>
+
+            <article>
+                <h3>Exception Handling and System Operators</h3>
+                <p>Advanced error mitigation utilizing <code>do ... unless</code> blocks. A global <code>error</code> keyword binds to the caught error context.</p>
+                <pre><code>do
+  throw DivisionByZeroError ?msg="Division by zero"
+unless DivisionByZeroError
+  display "Caught: " + error</code></pre>
+                <p>VerScript also comes packed with internal system operators for advanced script-level constraints:</p>
+                <pre><code>ForceErrors
+CriticalErrors
+SuppressErrors</code></pre>
+            </article>
+        </section>
+    </main>
+    <footer>
+        <p>&copy; 2026 VerScript Project</p>
+    </footer>
+    <script src="script.js"></script>
+</body>
+</html>
