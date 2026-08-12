@@ -40,6 +40,49 @@ int error_mode = ERR_MODE_NORMAL;
 jmp_buf suppress_jmp_env;
 int suppress_jmp_active = 0;
 
+char *source_buffer = NULL;
+
+typedef struct {
+    char *text;
+    int indent;
+    int line_num;
+} Line;
+
+Line *lines = NULL;
+int line_count = 0;
+int line_capacity = 0;
+
+void free_globals(void) {
+    if (source_buffer) {
+        free(source_buffer);
+        source_buffer = NULL;
+    }
+    if (lines) {
+        for (int i = 0; i < line_count; i++) {
+            if (lines[i].text) {
+                free(lines[i].text);
+                lines[i].text = NULL;
+            }
+        }
+        free(lines);
+        lines = NULL;
+    }
+    if (symtable) {
+        for (int i = 0; i < var_count; i++) {
+            if (symtable[i].name) {
+                free(symtable[i].name);
+                symtable[i].name = NULL;
+            }
+            if (symtable[i].string_val) {
+                free(symtable[i].string_val);
+                symtable[i].string_val = NULL;
+            }
+        }
+        free(symtable);
+        symtable = NULL;
+    }
+}
+
 typedef struct {
     int active;
     const char *expr;
@@ -72,6 +115,7 @@ void throw_error(const char *name, const char *fmt, ...) {
     if (error_mode == ERR_MODE_FORCE) {
         free_all_tracked();
         printf("ERROR: %s: %s\n", name, current_error_msg);
+        free_globals();
         exit(1);
     }
 
@@ -95,6 +139,7 @@ void throw_error(const char *name, const char *fmt, ...) {
         longjmp(jmp_env_stack[jmp_stack_ptr - 1], 1);
     } else {
         printf("ERROR: %s: %s\n", name, current_error_msg);
+        free_globals();
         exit(1);
     }
 }
@@ -127,12 +172,15 @@ Variable* get_var(const char *name) {
         }
         if (!v) {
             if (var_count >= var_capacity) {
-                var_capacity = (var_capacity == 0) ? 100 : var_capacity * 2;
-                symtable = realloc(symtable, var_capacity * sizeof(Variable));
-                if (!symtable) {
+                int new_capacity = (var_capacity == 0) ? 100 : var_capacity * 2;
+                Variable *tmp = realloc(symtable, new_capacity * sizeof(Variable));
+                if (!tmp) {
                     printf("ERROR: MemoryAllocationError: Memory allocation failed\n");
+                    free_globals();
                     exit(1);
                 }
+                symtable = tmp;
+                var_capacity = new_capacity;
             }
             v = &symtable[var_count++];
             v->name = strdup("error");
@@ -157,11 +205,13 @@ Variable* set_var(const char *name) {
     if (v) return v;
 
     if (var_count >= var_capacity) {
-        var_capacity = (var_capacity == 0) ? 100 : var_capacity * 2;
-        symtable = realloc(symtable, var_capacity * sizeof(Variable));
-        if (!symtable) {
+        int new_capacity = (var_capacity == 0) ? 100 : var_capacity * 2;
+        Variable *tmp = realloc(symtable, new_capacity * sizeof(Variable));
+        if (!tmp) {
             throw_error("MemoryAllocationError", "Memory allocation failed");
         }
+        symtable = tmp;
+        var_capacity = new_capacity;
     }
 
     v = &symtable[var_count++];
@@ -428,16 +478,6 @@ int evaluate_expression(const char **cursor, char **out_str, int *out_type) {
     return acc;
 }
 
-typedef struct {
-    char *text;
-    int indent;
-    int line_num;
-} Line;
-
-Line *lines = NULL;
-int line_count = 0;
-int line_capacity = 0;
-
 void parse_lines(const char *buffer) {
     const char *p = buffer;
     int line_num = 1;
@@ -505,8 +545,15 @@ void parse_lines(const char *buffer) {
         }
 
         if (line_count >= line_capacity) {
-            line_capacity = (line_capacity == 0) ? 100 : line_capacity * 2;
-            lines = realloc(lines, line_capacity * sizeof(Line));
+            int new_capacity = (line_capacity == 0) ? 100 : line_capacity * 2;
+            Line *tmp = realloc(lines, new_capacity * sizeof(Line));
+            if (!tmp) {
+                free(code);
+                free(raw_line);
+                throw_error("MemoryAllocationError", "Memory allocation failed");
+            }
+            lines = tmp;
+            line_capacity = new_capacity;
         }
         lines[line_count].text = code;
         lines[line_count].indent = indent;
@@ -1418,38 +1465,22 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     fseek(file, 0, SEEK_SET);
-    char *buffer = malloc(length + 1);
-    if (!buffer) {
+    source_buffer = malloc(length + 1);
+    if (!source_buffer) {
         fclose(file);
         return 1;
     }
-    size_t read_bytes = fread(buffer, 1, length, file);
-    buffer[read_bytes] = '\0';
+    size_t read_bytes = fread(source_buffer, 1, length, file);
+    source_buffer[read_bytes] = '\0';
     fclose(file);
 
-    parse_lines(buffer);
+    parse_lines(source_buffer);
 
     if (line_count > 0) {
         execute_block(0, line_count - 1);
     }
 
-    free(buffer);
-    for (int i = 0; i < line_count; i++) {
-        free(lines[i].text);
-    }
-    if (lines) {
-        free(lines);
-    }
-
-    for (int i = 0; i < var_count; i++) {
-        free(symtable[i].name);
-        if (symtable[i].string_val) {
-            free(symtable[i].string_val);
-        }
-    }
-    if (symtable) {
-        free(symtable);
-    }
+    free_globals();
 
     return 0;
 }
