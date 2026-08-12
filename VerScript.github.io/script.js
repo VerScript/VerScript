@@ -1,0 +1,1 @@
+console.log("VerScript docs loaded.");
