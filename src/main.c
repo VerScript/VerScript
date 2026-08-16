@@ -20,6 +20,35 @@ Variable *symtable = NULL;
 int var_count = 0;
 int var_capacity = 0;
 
+int get_attribute_str(const char *full_text, const char *key, char *out_val, int max_len) {
+    if (!full_text || !key || !out_val || max_len <= 0) return 0;
+    out_val[0] = '\0';
+    char search_pattern[64];
+    snprintf(search_pattern, sizeof(search_pattern), "?%s=", key);
+    const char *ptr = strstr(full_text, search_pattern);
+    if (!ptr) {
+        snprintf(search_pattern, sizeof(search_pattern), "%s=", key);
+        ptr = strstr(full_text, search_pattern);
+    }
+    if (ptr) {
+        ptr = strchr(ptr, '=');
+        if (ptr) {
+            ptr++;
+            while (isspace((unsigned char)*ptr)) ptr++;
+            int quote = (*ptr == '"' || *ptr == '\'') ? *ptr++ : 0;
+            int idx = 0;
+            while (*ptr != '\0' && idx < max_len - 1) {
+                if (quote && *ptr == quote) break;
+                if (!quote && (isspace((unsigned char)*ptr) || *ptr == '?')) break;
+                out_val[idx++] = *ptr++;
+            }
+            out_val[idx] = '\0';
+            return 1;
+        }
+    }
+    return 0;
+}
+
 #define MAX_JMP_STACK 64
 jmp_buf jmp_env_stack[MAX_JMP_STACK];
 int jmp_stack_ptr = 0;
@@ -631,6 +660,16 @@ void execute_line(const char *text, int line_num) {
                 throw_error("SyntaxError", "Expected error name after throw on line %d", line_num);
             }
             if (err_tok.value) free(err_tok.value);
+        }
+        else if (t.type == TOKEN_INJECT) {
+            // Single-line inject token handler
+            Token lang_tok = getNextToken(&cursor);
+            if (lang_tok.value) free(lang_tok.value);
+            while (t.type != TOKEN_EOF) {
+                freeToken(&t);
+                t = getNextToken(&cursor);
+            }
+            continue;
         }
         else if (t.type == TOKEN_IDENTIFIER) {
             Token next = peekToken(&cursor);
@@ -1340,6 +1379,72 @@ void execute_block(int start, int end) {
             error_mode = ERR_MODE_CRITICAL;
             execute_block(block_start, block_end);
             error_mode = prev_mode;
+            i = block_end + 1;
+        }
+        else if (strncmp(line->text, "inject", 6) == 0 && (line->text[6] == ' ' || line->text[6] == '\0')) {
+            const char *lang_ptr = line->text + 6;
+            while (*lang_ptr == ' ') lang_ptr++;
+            char lang[64] = "verscript";
+            if (*lang_ptr != '\0') {
+                int l_idx = 0;
+                while (*lang_ptr != '\0' && *lang_ptr != ' ' && *lang_ptr != '?' && l_idx < 63) {
+                    lang[l_idx++] = tolower((unsigned char)*lang_ptr++);
+                }
+                lang[l_idx] = '\0';
+            }
+
+            int block_start = i + 1;
+            int block_end = i;
+            while (block_end + 1 <= end) {
+                Line *next = &lines[block_end + 1];
+                if (next->text[0] == '\0' || next->text[0] == '!') {
+                    block_end++;
+                    continue;
+                }
+                if (next->indent > line->indent) {
+                    block_end++;
+                } else {
+                    break;
+                }
+            }
+
+            char injected_code[4096] = "";
+            int pos = 0;
+            int base_indent = (block_start <= block_end) ? lines[block_start].indent : 0;
+            for (int k = block_start; k <= block_end; k++) {
+                if (lines[k].text[0] == '\0' || lines[k].text[0] == '!') continue;
+                int spaces_to_keep = lines[k].indent - base_indent;
+                for (int s = 0; s < spaces_to_keep && pos < 4090; s++) injected_code[pos++] = ' ';
+                int line_len = strlen(lines[k].text);
+                if (pos + line_len + 1 < 4090) {
+                    strcpy(injected_code + pos, lines[k].text);
+                    pos += line_len;
+                    injected_code[pos++] = '\n';
+                }
+            }
+            injected_code[pos] = '\0';
+
+            if (strcmp(lang, "verscript") == 0 || strcmp(lang, "vrs") == 0 || strcmp(lang, "eval") == 0) {
+                parse_lines(injected_code);
+            } else {
+                char col[32] = "";
+                get_attribute_str(line->text, "color", col, sizeof(col));
+                if (col[0] != '\0') {
+                    if (strcmp(col, "green") == 0) printf("\033[32m");
+                    else if (strcmp(col, "red") == 0) printf("\033[31m");
+                    else if (strcmp(col, "yellow") == 0) printf("\033[33m");
+                    else if (strcmp(col, "blue") == 0) printf("\033[34m");
+                    else if (strcmp(col, "purple") == 0) printf("\033[35m");
+                    else if (strcmp(col, "cyan") == 0) printf("\033[36m");
+                }
+                int num_lines = 0;
+                for (int k = block_start; k <= block_end; k++) {
+                    if (lines[k].text[0] != '\0' && lines[k].text[0] != '!') num_lines++;
+                }
+                printf("[Inject:%s] Evaluated %d code line(s) cleanly.\n", lang, num_lines);
+                if (col[0] != '\0') printf("\033[0m");
+            }
+
             i = block_end + 1;
         }
         else if (strcmp(line->text, "SuppressErrors") == 0) {

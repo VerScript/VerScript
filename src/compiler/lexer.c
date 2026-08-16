@@ -129,6 +129,10 @@ Token getNextToken(const char **cursor) {
             token.type = TOKEN_THROW;
             return token;
         }
+        if (len == 6 && strncmp(start, "inject", 6) == 0) {
+            token.type = TOKEN_INJECT;
+            return token;
+        }
 
         token.type = TOKEN_IDENTIFIER;
         token.value = malloc(len + 1);

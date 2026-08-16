@@ -1,0 +1,22 @@
+!!
+  VerScript Polyglot Code Injection Test Suite
+!!
+
+display "=== 1. Testing inject python ===" ?color="cyan"
+inject python
+  print("Hello from Python code block!")
+  x = 10 + 20
+  print(f"Calculated: {x}")
+
+display "=== 2. Testing inject javascript ===" ?color="purple"
+inject javascript
+  const val = [1, 2, 3].reduce((a, b) => a + b);
+  console.log("Sum from JS:", val);
+
+display "=== 3. Testing inject verscript (dynamic eval) ===" ?color="yellow"
+inject verscript
+  display "Nested VerScript Execution inside inject verscript!" ?color="green"
+  iterate i from 1 to 3
+    display "Nested Iteration: " + i ?color="cyan"
+
+display "=== Polyglot Injection Test Complete ===" ?color="green"
