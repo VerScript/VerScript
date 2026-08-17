@@ -1425,7 +1425,15 @@ void execute_block(int start, int end) {
             injected_code[pos] = '\0';
 
             if (strcmp(lang, "verscript") == 0 || strcmp(lang, "vrs") == 0 || strcmp(lang, "eval") == 0) {
+                int prev_line_count = line_count;
                 parse_lines(injected_code);
+                if (line_count > prev_line_count) {
+                    execute_block(prev_line_count, line_count - 1);
+                    for (int idx = prev_line_count; idx < line_count; idx++) {
+                        if (lines[idx].text) free(lines[idx].text);
+                    }
+                    line_count = prev_line_count;
+                }
             } else {
                 char col[32] = "";
                 get_attribute_str(line->text, "color", col, sizeof(col));
