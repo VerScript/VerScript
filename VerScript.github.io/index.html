@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VerScript Documentation</title>
+
+    <!-- Strict Content-Security-Policy -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data: https://verscript.github.io; object-src 'none'; base-uri 'self';">
+
+    <!-- OpenGraph Tags -->
+    <meta property="og:title" content="VerScript Language">
+    <meta property="og:description" content="A custom, lightweight, C-based scripting language.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://verscript.github.io/">
+    <meta property="og:image" content="https://verscript.github.io/logo.png">
+
+    <!-- External CSS -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <div class="container hero">
+            <img src="logo.png" alt="VerScript Logo" class="hero-logo">
+            <h1>VerScript</h1>
+            <p>A custom, lightweight, C-based scripting language.</p>
+        </div>
+    </header>
+
+    <main class="container">
+        <section id="about">
+            <h2>About VerScript</h2>
+            <p>VerScript is an upcoming high-performance language built with a custom C interpreter using GCC. It focuses on simplicity and ease of use.</p>
+        </section>
+
+        <section id="features">
+            <h2>Language Grammar & Rules</h2>
+
+            <div class="feature-block">
+                <h3>Variable Assignment</h3>
+                <p>Variables are assigned using spaced colon syntax: <code>variable_name : expression</code>.</p>
+                <pre><code>x : 42
+name : "World"</code></pre>
+            </div>
+
+            <div class="feature-block">
+                <h3>Output Statements</h3>
+                <p>Output values using the <code>display</code> keyword.</p>
+                <pre><code>display "Hello, World!"
+display x</code></pre>
+            </div>
+
+            <div class="feature-block">
+                <h3>Input Statements</h3>
+                <p>Take user input using the <code>prompt</code> keyword, which stores keyboard input to a variable.</p>
+                <pre><code>prompt user_name
+display user_name</code></pre>
+            </div>
+
+            <div class="feature-block">
+                <h3>Comments</h3>
+                <p>Single-line comments start with <code>!</code>. Any text on a line following <code>!</code> is ignored.</p>
+                <p>Multi-line comments are enclosed within <code>!!</code> and <code>!!</code>.</p>
+                <pre><code>! This is a single line comment
+x : 10
+
+!!
+This is a
+multi-line comment
+!!</code></pre>
+            </div>
+
+            <div class="feature-block">
+                <h3>Arithmetic Operations</h3>
+                <p>VerScript supports simple arithmetic operations: addition (+), subtraction (-), multiplication (*), and division (/).</p>
+                <pre><code>result : 10 + 5 * 2</code></pre>
+            </div>
+
+            <div class="feature-block">
+                <h3>System Operators</h3>
+                <p>VerScript includes <code>ForceErrors</code>, <code>CriticalErrors</code>, <code>SuppressErrors</code>, and the <code>throw</code> keyword for error handling.</p>
+            </div>
+
+             <div class="feature-block">
+                <h3>Polyglot Execution</h3>
+                <p>VerScript supports the <code>inject</code> statement for polyglot code injection across 100+ languages and dynamic eval.</p>
+                <pre><code>inject python
+import math
+print(math.sqrt(16))
+inject_end</code></pre>
+            </div>
+
+            <div class="feature-block">
+                <h3>Loops and Conditionals</h3>
+                <p>VerScript features <code>loop</code>, <code>iterate</code>, <code>while</code>, and <code>until</code> blocks. You can also specify step constraints via <code>step n</code>.</p>
+            </div>
+
+        </section>
+
+        <section id="development">
+             <h2>Dev Environment & Commands</h2>
+             <ul>
+                <li><strong>Compiler:</strong> Uses GCC.</li>
+                <li><strong>Build Interpreter:</strong> Run <code>make</code> (produces <code>verscript</code> executable or <code>verscript.exe</code> on Windows).</li>
+                <li><strong>Clean Object Files:</strong> Run <code>make clean</code>.</li>
+             </ul>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2026 VerScript Development Team</p>
+        </div>
+    </footer>
+
+    <!-- External JS -->
+    <script src="script.js"></script>
+</body>
+</html>
