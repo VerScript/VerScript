@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self'; style-src 'self'; script-src 'self'">
+
+    <title>VerScript Documentation</title>
+    <meta name="description" content="Documentation for the VerScript programming language.">
+
+    <!-- OpenGraph Meta Tags -->
+    <meta property="og:title" content="VerScript Documentation">
+    <meta property="og:description" content="Documentation for the VerScript programming language.">
+    <meta property="og:url" content="https://verscript.github.io/docs.html">
+    <meta property="og:image" content="https://verscript.github.io/logo.png">
+    <meta property="og:type" content="article">
+
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <header>
+        <div class="container">
+            <div id="branding">
+                <h1><span class="highlight">Ver</span>Script</h1>
+            </div>
+            <nav>
+                <ul>
+                    <li><a href="index.html">Home</a></li>
+                    <li><a href="docs.html">Docs</a></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <section id="main">
+        <div class="container">
+            <article id="main-col">
+                <h1 class="page-title">VerScript Documentation</h1>
+
+                <h2>1. Basic Syntax</h2>
+                <p>VerScript uses a spaced colon syntax for variable assignment, `display` for output, and `prompt` for user input.</p>
+                <pre>
+! Single-line comment
+x : 42
+name : "World"
+display "Hello, " + name
+prompt user_input
+                </pre>
+
+                <h2>2. Multiline Comments</h2>
+                <p>Multiline comments span multiple lines, beginning and ending with `!!`.</p>
+                <pre>
+!!
+This is a multiline comment.
+It can span multiple lines.
+!!
+                </pre>
+
+                <h2>3. Polyglot Code Injection</h2>
+                <p>VerScript allows injecting code from over 100 languages directly using the `inject` keyword. It also supports dynamic VerScript evaluation.</p>
+                <pre>
+display "Testing Python Injection"
+inject python
+  print("Hello from Python!")
+  x = 10 + 20
+  print(f"Result: {x}")
+
+inject verscript
+  display "Nested VerScript Evaluation!"
+                </pre>
+
+                <h2>4. Loops and Step Constraints</h2>
+                <p>VerScript supports `iterate`, `while`, `until`, and `loop` with optional `step` constraints.</p>
+                <pre>
+iterate i from 1 to 10 step 2
+  display i
+
+x : 0
+while x &lt; 20 step 5
+  x : x + 5
+  display x
+                </pre>
+
+                <h2>5. Error Handling</h2>
+                <p>VerScript provides robust error handling with `throw`, `ForceErrors`, `CriticalErrors`, `SuppressErrors`, and the `do-unless` construct.</p>
+                <pre>
+! Throw a custom error
+throw "Something went wrong!"
+
+! Suppress errors in a block
+SuppressErrors
+  x : 10 / 0 ! Division by zero error is ignored
+
+! do-unless construct for fallbacks
+do
+  throw "Intentional Error"
+unless error == "Intentional Error"
+  display "Caught the error!"
+                </pre>
+            </article>
+        </div>
+    </section>
+
+    <footer>
+        <p>VerScript, Copyright &copy; 2026</p>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>
