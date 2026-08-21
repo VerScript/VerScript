@@ -139,7 +139,7 @@ void throw_error(const char *name, const char *fmt, ...) {
     vsnprintf(temp_msg, sizeof(temp_msg), fmt, args);
     va_end(args);
 
-    strcpy(current_error_msg, temp_msg);
+    memmove(current_error_msg, temp_msg, strlen(temp_msg) + 1);
 
     if (error_mode == ERR_MODE_FORCE) {
         free_all_tracked();
@@ -1417,7 +1417,7 @@ void execute_block(int start, int end) {
                 for (int s = 0; s < spaces_to_keep && pos < 4090; s++) injected_code[pos++] = ' ';
                 int line_len = strlen(lines[k].text);
                 if (pos + line_len + 1 < 4090) {
-                    strcpy(injected_code + pos, lines[k].text);
+                    memmove(injected_code + pos, lines[k].text, line_len + 1);
                     pos += line_len;
                     injected_code[pos++] = '\n';
                 }
