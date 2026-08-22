@@ -521,7 +521,11 @@ void parse_lines(const char *buffer) {
         memcpy(raw_line, p, raw_len);
         raw_line[raw_len] = '\0';
 
-        char clean_line[1024] = "";
+        char *clean_line = calloc(1, raw_len + 1);
+        if (!clean_line) {
+            free(raw_line);
+            throw_error("MemoryAllocationError", "Memory allocation failed");
+        }
         int clean_pos = 0;
         char *src_ptr = raw_line;
         int in_string = 0;
@@ -567,6 +571,7 @@ void parse_lines(const char *buffer) {
         }
 
         char *code = strdup(src);
+        free(clean_line);
         int len = strlen(code);
         while (len > 0 && isspace((unsigned char)code[len - 1])) {
             code[len - 1] = '\0';
@@ -832,6 +837,9 @@ void execute_block(int start, int end) {
             int id_len = cursor - id_start;
             if (id_len == 0) {
                 throw_error("SyntaxError", "Expected identifier after iterate on line %d", line->line_num);
+            }
+            if (id_len >= 64) {
+                id_len = 63;
             }
             char var_name[64];
             strncpy(var_name, id_start, id_len);
