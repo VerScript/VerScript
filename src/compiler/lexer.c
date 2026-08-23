@@ -133,6 +133,10 @@ Token getNextToken(const char **cursor) {
             token.type = TOKEN_INJECT;
             return token;
         }
+        if (len == 5 && strncmp(start, "alias", 5) == 0) {
+            token.type = TOKEN_ALIAS;
+            return token;
+        }
 
         token.type = TOKEN_IDENTIFIER;
         token.value = malloc(len + 1);

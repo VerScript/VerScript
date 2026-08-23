@@ -49,6 +49,224 @@ int get_attribute_str(const char *full_text, const char *key, char *out_val, int
     return 0;
 }
 
+typedef struct {
+    char from_arg[64]; // aliased attribute/arg name
+    char to_arg[64];   // canonical attribute/arg name
+} ArgMapping;
+
+typedef struct {
+    char target_cmd[64]; // original target command (e.g. "display")
+    char alias_name[64]; // new alias name (e.g. "print")
+    ArgMapping mappings[16];
+    int mapping_count;
+} CommandAlias;
+
+#define MAX_ALIASES 128
+CommandAlias aliases[MAX_ALIASES];
+int alias_count = 0;
+
+void add_command_alias(const char *target_cmd, const char *alias_name, ArgMapping *mappings, int mapping_count) {
+    if (!target_cmd || !alias_name || !*target_cmd || !*alias_name) return;
+    for (int i = 0; i < alias_count; i++) {
+        if (strcmp(aliases[i].alias_name, alias_name) == 0) {
+            strncpy(aliases[i].target_cmd, target_cmd, sizeof(aliases[i].target_cmd) - 1);
+            aliases[i].target_cmd[sizeof(aliases[i].target_cmd) - 1] = '\0';
+            aliases[i].mapping_count = mapping_count;
+            for (int j = 0; j < mapping_count && j < 16; j++) {
+                aliases[i].mappings[j] = mappings[j];
+            }
+            return;
+        }
+    }
+    if (alias_count < MAX_ALIASES) {
+        CommandAlias *a = &aliases[alias_count++];
+        strncpy(a->target_cmd, target_cmd, sizeof(a->target_cmd) - 1);
+        a->target_cmd[sizeof(a->target_cmd) - 1] = '\0';
+        strncpy(a->alias_name, alias_name, sizeof(a->alias_name) - 1);
+        a->alias_name[sizeof(a->alias_name) - 1] = '\0';
+        a->mapping_count = mapping_count;
+        for (int j = 0; j < mapping_count && j < 16; j++) {
+            a->mappings[j] = mappings[j];
+        }
+    }
+}
+
+CommandAlias* find_alias(const char *alias_name) {
+    for (int i = 0; i < alias_count; i++) {
+        if (strcmp(aliases[i].alias_name, alias_name) == 0) return &aliases[i];
+    }
+    return NULL;
+}
+
+void parse_and_register_alias(const char *spec) {
+    if (!spec) return;
+    while (isspace((unsigned char)*spec)) spec++;
+    if (strncmp(spec, "alias", 5) == 0 && (isspace((unsigned char)spec[5]) || spec[5] == ':')) {
+        spec += 5;
+        while (isspace((unsigned char)*spec)) spec++;
+    }
+    if (*spec == '\0' || *spec == ':') return;
+
+    const char *p = spec;
+    while (*p && (isalnum((unsigned char)*p) || *p == '_')) p++;
+    int cmd1_len = p - spec;
+    if (cmd1_len <= 0) return;
+    char cmd1[64];
+    if (cmd1_len >= 64) cmd1_len = 63;
+    strncpy(cmd1, spec, cmd1_len);
+    cmd1[cmd1_len] = '\0';
+
+    while (isspace((unsigned char)*p)) p++;
+    if (*p == ':') p++;
+    while (isspace((unsigned char)*p)) p++;
+
+    const char *p2 = p;
+    while (*p2 && (isalnum((unsigned char)*p2) || *p2 == '_')) p2++;
+    int cmd2_len = p2 - p;
+    if (cmd2_len <= 0) return;
+    char cmd2[64];
+    if (cmd2_len >= 64) cmd2_len = 63;
+    strncpy(cmd2, p, cmd2_len);
+    cmd2[cmd2_len] = '\0';
+    p = p2;
+
+    ArgMapping mappings[16];
+    int mapping_count = 0;
+
+    while (isspace((unsigned char)*p)) p++;
+    if (*p == '?') {
+        p++;
+        while (*p != '\0' && *p != '\n' && mapping_count < 16) {
+            while (isspace((unsigned char)*p) || *p == ',') p++;
+            if (*p == '\0' || *p == '\n') break;
+            const char *arg_start = p;
+            while (*p && (isalnum((unsigned char)*p) || *p == '_')) p++;
+            int a1_len = p - arg_start;
+            if (a1_len <= 0) break;
+            char a1[64];
+            if (a1_len >= 64) a1_len = 63;
+            strncpy(a1, arg_start, a1_len);
+            a1[a1_len] = '\0';
+
+            while (isspace((unsigned char)*p)) p++;
+            if (*p == '=') {
+                p++;
+                while (isspace((unsigned char)*p)) p++;
+                const char *a2_start = p;
+                while (*p && (isalnum((unsigned char)*p) || *p == '_')) p++;
+                int a2_len = p - a2_start;
+                if (a2_len > 0) {
+                    char a2[64];
+                    if (a2_len >= 64) a2_len = 63;
+                    strncpy(a2, a2_start, a2_len);
+                    a2[a2_len] = '\0';
+                    strncpy(mappings[mapping_count].to_arg, a1, 63);
+                    mappings[mapping_count].to_arg[63] = '\0';
+                    strncpy(mappings[mapping_count].from_arg, a2, 63);
+                    mappings[mapping_count].from_arg[63] = '\0';
+                    mapping_count++;
+                }
+            } else {
+                strncpy(mappings[mapping_count].from_arg, a1, 63);
+                mappings[mapping_count].from_arg[63] = '\0';
+                strncpy(mappings[mapping_count].to_arg, a1, 63);
+                mappings[mapping_count].to_arg[63] = '\0';
+                mapping_count++;
+            }
+        }
+    }
+
+    add_command_alias(cmd1, cmd2, mappings, mapping_count);
+}
+
+char* resolve_alias_line(const char *line_text, char *out_buf, size_t out_buf_size) {
+    if (!line_text || !out_buf || out_buf_size == 0) return (char*)line_text;
+    const char *p = line_text;
+    while (isspace((unsigned char)*p)) p++;
+    if (*p == '\0' || *p == '!') {
+        strncpy(out_buf, line_text, out_buf_size - 1);
+        out_buf[out_buf_size - 1] = '\0';
+        return out_buf;
+    }
+
+    const char *cmd_start = p;
+    while (*p && (isalnum((unsigned char)*p) || *p == '_')) p++;
+    int cmd_len = p - cmd_start;
+    if (cmd_len <= 0) {
+        strncpy(out_buf, line_text, out_buf_size - 1);
+        out_buf[out_buf_size - 1] = '\0';
+        return out_buf;
+    }
+
+    char cmd[64];
+    if (cmd_len >= 64) cmd_len = 63;
+    strncpy(cmd, cmd_start, cmd_len);
+    cmd[cmd_len] = '\0';
+
+    CommandAlias *a = find_alias(cmd);
+    if (!a) {
+        strncpy(out_buf, line_text, out_buf_size - 1);
+        out_buf[out_buf_size - 1] = '\0';
+        return out_buf;
+    }
+
+    int prefix_len = cmd_start - line_text;
+    int pos = 0;
+    if (prefix_len > 0 && pos + prefix_len < (int)out_buf_size - 1) {
+        strncpy(out_buf + pos, line_text, prefix_len);
+        pos += prefix_len;
+    }
+
+    int tgt_len = strlen(a->target_cmd);
+    if (pos + tgt_len < (int)out_buf_size - 1) {
+        strcpy(out_buf + pos, a->target_cmd);
+        pos += tgt_len;
+    }
+
+    const char *rem = p;
+    while (*rem != '\0' && pos < (int)out_buf_size - 1) {
+        if (*rem == '?') {
+            const char *q_start = rem;
+            rem++;
+            const char *arg_start = rem;
+            while (*rem && (isalnum((unsigned char)*rem) || *rem == '_')) rem++;
+            int arg_len = rem - arg_start;
+            char cur_arg[64] = "";
+            if (arg_len > 0 && arg_len < 64) {
+                strncpy(cur_arg, arg_start, arg_len);
+                cur_arg[arg_len] = '\0';
+            }
+
+            const char *mapped_to = NULL;
+            for (int m = 0; m < a->mapping_count; m++) {
+                if (strcmp(a->mappings[m].from_arg, cur_arg) == 0) {
+                    mapped_to = a->mappings[m].to_arg;
+                    break;
+                }
+            }
+
+            if (mapped_to) {
+                out_buf[pos++] = '?';
+                int m_len = strlen(mapped_to);
+                if (pos + m_len < (int)out_buf_size - 1) {
+                    strcpy(out_buf + pos, mapped_to);
+                    pos += m_len;
+                }
+            } else {
+                int orig_len = rem - q_start;
+                if (pos + orig_len < (int)out_buf_size - 1) {
+                    strncpy(out_buf + pos, q_start, orig_len);
+                    pos += orig_len;
+                }
+            }
+        } else {
+            out_buf[pos++] = *rem++;
+        }
+    }
+    out_buf[pos] = '\0';
+    return out_buf;
+}
+
 #define MAX_JMP_STACK 64
 jmp_buf jmp_env_stack[MAX_JMP_STACK];
 int jmp_stack_ptr = 0;
@@ -603,30 +821,66 @@ void parse_lines(const char *buffer) {
 }
 
 void execute_line(const char *text, int line_num) {
-    const char *cursor = text;
+    char resolved_buf[2048];
+    const char *resolved_text = resolve_alias_line(text, resolved_buf, sizeof(resolved_buf));
+    const char *cursor = resolved_text;
     Token t;
     while ((t = getNextToken(&cursor)).type != TOKEN_EOF) {
-        if (t.type == TOKEN_DISPLAY) {
+        if (t.type == TOKEN_ALIAS) {
+            parse_and_register_alias(resolved_text);
+            while (t.type != TOKEN_EOF) {
+                freeToken(&t);
+                t = getNextToken(&cursor);
+            }
+            continue;
+        }
+        else if (t.type == TOKEN_DISPLAY) {
+            char col[32] = "";
+            get_attribute_str(resolved_text, "color", col, sizeof(col));
+            int newline = 1;
+            char nl[32] = "";
+            if (get_attribute_str(resolved_text, "newline", nl, sizeof(nl))) {
+                if (strcmp(nl, "false") == 0 || strcmp(nl, "0") == 0) newline = 0;
+            }
+            if (strstr(resolved_text, "?inline") != NULL) newline = 0;
+
+            if (col[0] != '\0') {
+                if (strcmp(col, "green") == 0) printf("\033[32m");
+                else if (strcmp(col, "red") == 0) printf("\033[31m");
+                else if (strcmp(col, "yellow") == 0) printf("\033[33m");
+                else if (strcmp(col, "blue") == 0) printf("\033[34m");
+                else if (strcmp(col, "purple") == 0) printf("\033[35m");
+                else if (strcmp(col, "cyan") == 0) printf("\033[36m");
+            }
+
             char *out_str = NULL;
             int out_type = VAR_INT;
             int val = evaluate_expression(&cursor, &out_str, &out_type);
             if (out_str) {
-                printf("%s\n", out_str);
+                printf("%s", out_str);
                 untrack_alloc(out_str);
                 free(out_str);
             } else if (out_type == VAR_BOOL) {
-                printf("%s\n", val ? "true" : "false");
+                printf("%s", val ? "true" : "false");
             } else {
-                printf("%d\n", val);
+                printf("%d", val);
             }
+            if (col[0] != '\0') printf("\033[0m");
+            if (newline) printf("\n");
         }
         else if (t.type == TOKEN_PROMPT) {
             Token var_tok = getNextToken(&cursor);
             if (var_tok.type == TOKEN_IDENTIFIER) {
                 Variable *v = set_var(var_tok.value);
+                char def_val[128] = "";
+                get_attribute_str(resolved_text, "default", def_val, sizeof(def_val));
                 char input[256];
                 if (fgets(input, sizeof(input), stdin)) {
                     input[strcspn(input, "\r\n")] = 0;
+                    if (input[0] == '\0' && def_val[0] != '\0') {
+                        strncpy(input, def_val, sizeof(input) - 1);
+                        input[sizeof(input) - 1] = '\0';
+                    }
                     char *endptr;
                     long lval = strtol(input, &endptr, 10);
                     if (*endptr == '\0' && input[0] != '\0') {
@@ -657,7 +911,13 @@ void execute_line(const char *text, int line_num) {
                         throw_error(current_error_name, "%s", current_error_msg);
                     }
                 } else if (is_error_name(err_tok.value)) {
-                    throw_error(err_tok.value, "User thrown error");
+                    char custom_msg[256] = "";
+                    get_attribute_str(resolved_text, "msg", custom_msg, sizeof(custom_msg));
+                    if (custom_msg[0] != '\0') {
+                        throw_error(err_tok.value, "%s", custom_msg);
+                    } else {
+                        throw_error(err_tok.value, "User thrown error");
+                    }
                 } else {
                     throw_error("SyntaxError", "Invalid error: %s error on line %d", err_tok.value, line_num);
                 }
@@ -755,9 +1015,38 @@ void execute_block(int start, int end) {
         jmp_buf prev_suppress_env;
         memcpy(prev_suppress_env, suppress_jmp_env, sizeof(jmp_buf));
 
+        char resolved_line_buf[2048];
+        const char *effective_text = resolve_alias_line(line->text, resolved_line_buf, sizeof(resolved_line_buf));
+
         suppress_jmp_active = 1;
         if (setjmp(suppress_jmp_env) == 0) {
-            if (strncmp(line->text, "loop ", 5) == 0 || strcmp(line->text, "loop") == 0) {
+            if (strncmp(line->text, "alias:", 6) == 0 || strcmp(line->text, "alias:") == 0 || strcmp(line->text, "alias") == 0) {
+                int block_start = i + 1;
+                int block_end = i;
+                while (block_end + 1 <= end) {
+                    Line *next = &lines[block_end + 1];
+                    if (next->text[0] == '\0' || next->text[0] == '!') {
+                        block_end++;
+                        continue;
+                    }
+                    if (next->indent > line->indent) {
+                        block_end++;
+                    } else {
+                        break;
+                    }
+                }
+                for (int k = block_start; k <= block_end; k++) {
+                    if (lines[k].text[0] != '\0' && lines[k].text[0] != '!') {
+                        parse_and_register_alias(lines[k].text);
+                    }
+                }
+                i = block_end + 1;
+            }
+            else if (strncmp(line->text, "alias ", 6) == 0) {
+                parse_and_register_alias(line->text);
+                i++;
+            }
+            else if (strncmp(effective_text, "loop ", 5) == 0 || strcmp(effective_text, "loop") == 0) {
             int block_start = i + 1;
             int block_end = i;
             while (block_end + 1 <= end) {
@@ -773,7 +1062,7 @@ void execute_block(int start, int end) {
                 }
             }
 
-            const char *cursor = line->text + 4;
+            const char *cursor = effective_text + 4;
             char *out_str = NULL;
             int out_type = VAR_INT;
             int iters = evaluate_expression(&cursor, &out_str, &out_type);
@@ -814,7 +1103,7 @@ void execute_block(int start, int end) {
             }
             i = block_end + 1;
         }
-        else if (strncmp(line->text, "iterate ", 8) == 0) {
+            else if (strncmp(effective_text, "iterate ", 8) == 0) {
             int block_start = i + 1;
             int block_end = i;
             while (block_end + 1 <= end) {
@@ -830,7 +1119,7 @@ void execute_block(int start, int end) {
                 }
             }
 
-            const char *cursor = line->text + 8;
+            const char *cursor = effective_text + 8;
             while (isspace((unsigned char)*cursor)) cursor++;
             const char *id_start = cursor;
             while (isalnum((unsigned char)*cursor) || *cursor == '_') cursor++;
@@ -928,8 +1217,8 @@ void execute_block(int start, int end) {
             }
             i = block_end + 1;
         }
-        else if (strncmp(line->text, "if ", 3) == 0) {
-            const char *cursor = line->text + 3;
+        else if (strncmp(effective_text, "if ", 3) == 0) {
+            const char *cursor = effective_text + 3;
             const char *then_ptr = strstr(cursor, " then");
             if (!then_ptr) {
                 throw_error("SyntaxError", "Expected 'then' after if condition on line %d", line->line_num);
@@ -984,7 +1273,10 @@ void execute_block(int start, int end) {
                     break;
                 }
 
-                if (strncmp(lookahead->text, "else if ", 8) == 0) {
+                char resolved_lookahead_buf[2048];
+                const char *eff_lookahead = resolve_alias_line(lookahead->text, resolved_lookahead_buf, sizeof(resolved_lookahead_buf));
+
+                if (strncmp(eff_lookahead, "else if ", 8) == 0) {
                     int elif_start = current_idx + 1;
                     int elif_end = current_idx;
                     while (elif_end + 1 <= end) {
@@ -1001,7 +1293,7 @@ void execute_block(int start, int end) {
                     }
 
                     if (!executed) {
-                        const char *elif_cursor = lookahead->text + 8;
+                        const char *elif_cursor = eff_lookahead + 8;
                         const char *elif_then_ptr = strstr(elif_cursor, " then");
                         if (!elif_then_ptr) {
                             throw_error("SyntaxError", "Expected 'then' after else if condition on line %d", lookahead->line_num);
@@ -1031,7 +1323,7 @@ void execute_block(int start, int end) {
                     }
                     current_idx = elif_end + 1;
                 }
-                else if (strncmp(lookahead->text, "else ", 5) == 0 || strcmp(lookahead->text, "else") == 0) {
+                else if (strncmp(eff_lookahead, "else ", 5) == 0 || strcmp(eff_lookahead, "else") == 0) {
                     int else_start = current_idx + 1;
                     int else_end = current_idx;
                     while (else_end + 1 <= end) {
@@ -1063,7 +1355,7 @@ void execute_block(int start, int end) {
             }
             i = current_idx;
         }
-        else if (strncmp(line->text, "while ", 6) == 0) {
+        else if (strncmp(effective_text, "while ", 6) == 0) {
             int block_start = i + 1;
             int block_end = i;
             while (block_end + 1 <= end) {
@@ -1080,7 +1372,7 @@ void execute_block(int start, int end) {
             }
 
             int step_val = 1;
-            const char *cursor = line->text + 6;
+            const char *cursor = effective_text + 6;
             const char *step_ptr = strstr(cursor, " step");
             if (step_ptr) {
                 if (isspace(*(step_ptr - 1)) && (isspace(*(step_ptr + 5)) || *(step_ptr + 5) == '\0')) {
@@ -1133,7 +1425,7 @@ void execute_block(int start, int end) {
             }
             i = block_end + 1;
         }
-        else if (strncmp(line->text, "until ", 6) == 0) {
+        else if (strncmp(effective_text, "until ", 6) == 0) {
             int block_start = i + 1;
             int block_end = i;
             while (block_end + 1 <= end) {
@@ -1150,7 +1442,7 @@ void execute_block(int start, int end) {
             }
 
             int step_val = 1;
-            const char *cursor = line->text + 6;
+            const char *cursor = effective_text + 6;
             const char *step_ptr = strstr(cursor, " step");
             if (step_ptr) {
                 if (isspace(*(step_ptr - 1)) && (isspace(*(step_ptr + 5)) || *(step_ptr + 5) == '\0')) {
@@ -1203,7 +1495,7 @@ void execute_block(int start, int end) {
             }
             i = block_end + 1;
         }
-        else if (strcmp(line->text, "do") == 0) {
+        else if (strcmp(effective_text, "do") == 0) {
             int do_start = i + 1;
             int do_end = i;
             while (do_end + 1 <= end) {
@@ -1347,7 +1639,7 @@ void execute_block(int start, int end) {
 
             i = unless_end + 1;
         }
-        else if (strcmp(line->text, "ForceErrors") == 0) {
+        else if (strcmp(effective_text, "ForceErrors") == 0) {
             int block_start = i + 1;
             int block_end = i;
             while (block_end + 1 <= end) {
@@ -1368,7 +1660,7 @@ void execute_block(int start, int end) {
             error_mode = prev_mode;
             i = block_end + 1;
         }
-        else if (strcmp(line->text, "CriticalErrors") == 0) {
+        else if (strcmp(effective_text, "CriticalErrors") == 0) {
             int block_start = i + 1;
             int block_end = i;
             while (block_end + 1 <= end) {
@@ -1389,8 +1681,8 @@ void execute_block(int start, int end) {
             error_mode = prev_mode;
             i = block_end + 1;
         }
-        else if (strncmp(line->text, "inject", 6) == 0 && (line->text[6] == ' ' || line->text[6] == '\0')) {
-            const char *lang_ptr = line->text + 6;
+        else if (strncmp(effective_text, "inject", 6) == 0 && (effective_text[6] == ' ' || effective_text[6] == '\0')) {
+            const char *lang_ptr = effective_text + 6;
             while (*lang_ptr == ' ') lang_ptr++;
             char lang[64] = "verscript";
             if (*lang_ptr != '\0') {
@@ -1444,7 +1736,7 @@ void execute_block(int start, int end) {
                 }
             } else {
                 char col[32] = "";
-                get_attribute_str(line->text, "color", col, sizeof(col));
+                get_attribute_str(effective_text, "color", col, sizeof(col));
                 if (col[0] != '\0') {
                     if (strcmp(col, "green") == 0) printf("\033[32m");
                     else if (strcmp(col, "red") == 0) printf("\033[31m");
@@ -1463,7 +1755,7 @@ void execute_block(int start, int end) {
 
             i = block_end + 1;
         }
-        else if (strcmp(line->text, "SuppressErrors") == 0) {
+        else if (strcmp(effective_text, "SuppressErrors") == 0) {
             int block_start = i + 1;
             int block_end = i;
             while (block_end + 1 <= end) {
@@ -1485,7 +1777,7 @@ void execute_block(int start, int end) {
             i = block_end + 1;
         }
         else {
-            execute_line(line->text, line->line_num);
+            execute_line(effective_text, line->line_num);
             if (active_watch.active) {
                 const char *cursor = active_watch.expr;
                 char *out_str = NULL;
@@ -1506,15 +1798,15 @@ void execute_block(int start, int end) {
     } else {
         // Suppressed error occurred. Skip statement or block.
         int block_end = i;
-        if (strncmp(line->text, "loop ", 5) == 0 || strcmp(line->text, "loop") == 0 ||
-            strncmp(line->text, "iterate ", 8) == 0 ||
-            strncmp(line->text, "if ", 3) == 0 ||
-            strncmp(line->text, "while ", 6) == 0 ||
-            strncmp(line->text, "until ", 6) == 0 ||
-            strcmp(line->text, "do") == 0 ||
-            strcmp(line->text, "ForceErrors") == 0 ||
-            strcmp(line->text, "CriticalErrors") == 0 ||
-            strcmp(line->text, "SuppressErrors") == 0) {
+        if (strncmp(effective_text, "loop ", 5) == 0 || strcmp(effective_text, "loop") == 0 ||
+            strncmp(effective_text, "iterate ", 8) == 0 ||
+            strncmp(effective_text, "if ", 3) == 0 ||
+            strncmp(effective_text, "while ", 6) == 0 ||
+            strncmp(effective_text, "until ", 6) == 0 ||
+            strcmp(effective_text, "do") == 0 ||
+            strcmp(effective_text, "ForceErrors") == 0 ||
+            strcmp(effective_text, "CriticalErrors") == 0 ||
+            strcmp(effective_text, "SuppressErrors") == 0) {
 
             while (block_end + 1 <= end) {
                 Line *next = &lines[block_end + 1];

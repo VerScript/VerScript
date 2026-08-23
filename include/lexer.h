@@ -32,6 +32,7 @@ typedef enum {
     TOKEN_QUESTION,
     TOKEN_THROW,
     TOKEN_INJECT,
+    TOKEN_ALIAS,
     TOKEN_EOF,
     TOKEN_ERROR
 } TokenType;
