@@ -188,6 +188,20 @@ Token getNextToken(const char **cursor) {
         return token;
     }
 
+    // Hex colors or color values like #123456 or #fff
+    if (**cursor == '#') {
+        const char *start = *cursor;
+        (*cursor)++;
+        while (isxdigit((unsigned char)**cursor) || isalnum((unsigned char)**cursor) || **cursor == '_') (*cursor)++;
+        size_t len = *cursor - start;
+        token.value = malloc(len + 1);
+        track_alloc(token.value);
+        strncpy(token.value, start, len);
+        token.value[len] = '\0';
+        token.type = TOKEN_IDENTIFIER;
+        return token;
+    }
+
     // Unknown single character error
     token.type = TOKEN_ERROR;
     token.value = malloc(2);

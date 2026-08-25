@@ -49,6 +49,30 @@ int get_attribute_str(const char *full_text, const char *key, char *out_val, int
     return 0;
 }
 
+void apply_color(const char *col) {
+    if (!col || col[0] == '\0') return;
+    if (strcmp(col, "green") == 0) printf("\033[32m");
+    else if (strcmp(col, "red") == 0) printf("\033[31m");
+    else if (strcmp(col, "yellow") == 0) printf("\033[33m");
+    else if (strcmp(col, "blue") == 0) printf("\033[34m");
+    else if (strcmp(col, "purple") == 0) printf("\033[35m");
+    else if (strcmp(col, "cyan") == 0) printf("\033[36m");
+    else if (strcmp(col, "white") == 0) printf("\033[37m");
+    else if (col[0] == '#') {
+        int r = 0, g = 0, b = 0;
+        int len = strlen(col);
+        if (len == 7) {
+            if (sscanf(col + 1, "%02x%02x%02x", &r, &g, &b) == 3) {
+                printf("\033[38;2;%d;%d;%dm", r, g, b);
+            }
+        } else if (len == 4) {
+            if (sscanf(col + 1, "%1x%1x%1x", &r, &g, &b) == 3) {
+                printf("\033[38;2;%d;%d;%dm", r * 17, g * 17, b * 17);
+            }
+        }
+    }
+}
+
 typedef struct {
     char from_arg[64]; // aliased attribute/arg name
     char to_arg[64];   // canonical attribute/arg name
@@ -835,7 +859,7 @@ void execute_line(const char *text, int line_num) {
             continue;
         }
         else if (t.type == TOKEN_DISPLAY) {
-            char col[32] = "";
+            char col[64] = "";
             get_attribute_str(resolved_text, "color", col, sizeof(col));
             int newline = 1;
             char nl[32] = "";
@@ -845,12 +869,7 @@ void execute_line(const char *text, int line_num) {
             if (strstr(resolved_text, "?inline") != NULL) newline = 0;
 
             if (col[0] != '\0') {
-                if (strcmp(col, "green") == 0) printf("\033[32m");
-                else if (strcmp(col, "red") == 0) printf("\033[31m");
-                else if (strcmp(col, "yellow") == 0) printf("\033[33m");
-                else if (strcmp(col, "blue") == 0) printf("\033[34m");
-                else if (strcmp(col, "purple") == 0) printf("\033[35m");
-                else if (strcmp(col, "cyan") == 0) printf("\033[36m");
+                apply_color(col);
             }
 
             char *out_str = NULL;
