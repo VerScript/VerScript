@@ -1754,15 +1754,10 @@ void execute_block(int start, int end) {
                     line_count = prev_line_count;
                 }
             } else {
-                char col[32] = "";
+                char col[64] = "";
                 get_attribute_str(effective_text, "color", col, sizeof(col));
                 if (col[0] != '\0') {
-                    if (strcmp(col, "green") == 0) printf("\033[32m");
-                    else if (strcmp(col, "red") == 0) printf("\033[31m");
-                    else if (strcmp(col, "yellow") == 0) printf("\033[33m");
-                    else if (strcmp(col, "blue") == 0) printf("\033[34m");
-                    else if (strcmp(col, "purple") == 0) printf("\033[35m");
-                    else if (strcmp(col, "cyan") == 0) printf("\033[36m");
+                    apply_color(col);
                 }
                 int num_lines = 0;
                 for (int k = block_start; k <= block_end; k++) {
