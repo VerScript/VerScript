@@ -385,7 +385,7 @@ void throw_error(const char *name, const char *fmt, ...) {
 
     if (error_mode == ERR_MODE_FORCE) {
         free_all_tracked();
-        printf("ERROR: %s: %s\n", name, current_error_msg);
+        printf("ERROR: %s: %s\n", current_error_name, current_error_msg);
         free_globals();
         exit(1);
     }
@@ -409,7 +409,7 @@ void throw_error(const char *name, const char *fmt, ...) {
     if (jmp_stack_ptr > 0) {
         longjmp(jmp_env_stack[jmp_stack_ptr - 1], 1);
     } else {
-        printf("ERROR: %s: %s\n", name, current_error_msg);
+        printf("ERROR: %s: %s\n", current_error_name, current_error_msg);
         free_globals();
         exit(1);
     }
