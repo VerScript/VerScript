@@ -59,15 +59,15 @@ void apply_color(const char *col) {
     else if (strcmp(col, "cyan") == 0) printf("\033[36m");
     else if (strcmp(col, "white") == 0) printf("\033[37m");
     else if (col[0] == '#') {
-        int r = 0, g = 0, b = 0;
+        unsigned int r = 0, g = 0, b = 0;
         int len = strlen(col);
         if (len == 7) {
             if (sscanf(col + 1, "%02x%02x%02x", &r, &g, &b) == 3) {
-                printf("\033[38;2;%d;%d;%dm", r, g, b);
+                printf("\033[38;2;%u;%u;%um", r, g, b);
             }
         } else if (len == 4) {
             if (sscanf(col + 1, "%1x%1x%1x", &r, &g, &b) == 3) {
-                printf("\033[38;2;%d;%d;%dm", r * 17, g * 17, b * 17);
+                printf("\033[38;2;%u;%u;%um", r * 17, g * 17, b * 17);
             }
         }
     }
@@ -243,7 +243,7 @@ char* resolve_alias_line(const char *line_text, char *out_buf, size_t out_buf_si
 
     int tgt_len = strlen(a->target_cmd);
     if (pos + tgt_len < (int)out_buf_size - 1) {
-        strcpy(out_buf + pos, a->target_cmd);
+        memmove(out_buf + pos, a->target_cmd, tgt_len + 1);
         pos += tgt_len;
     }
 
@@ -273,7 +273,7 @@ char* resolve_alias_line(const char *line_text, char *out_buf, size_t out_buf_si
                 out_buf[pos++] = '?';
                 int m_len = strlen(mapped_to);
                 if (pos + m_len < (int)out_buf_size - 1) {
-                    strcpy(out_buf + pos, mapped_to);
+                    memmove(out_buf + pos, mapped_to, m_len + 1);
                     pos += m_len;
                 }
             } else {
