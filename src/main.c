@@ -918,7 +918,7 @@ void execute_line(const char *text, int line_num) {
             } else {
                 throw_error("SyntaxError", "Expected variable name after prompt on line %d", line_num);
             }
-            if (var_tok.value) free(var_tok.value);
+            freeToken(&var_tok);
         }
         else if (t.type == TOKEN_THROW) {
             Token err_tok = getNextToken(&cursor);
@@ -943,12 +943,12 @@ void execute_line(const char *text, int line_num) {
             } else {
                 throw_error("SyntaxError", "Expected error name after throw on line %d", line_num);
             }
-            if (err_tok.value) free(err_tok.value);
+            freeToken(&err_tok);
         }
         else if (t.type == TOKEN_INJECT) {
             // Single-line inject token handler
             Token lang_tok = getNextToken(&cursor);
-            if (lang_tok.value) free(lang_tok.value);
+            freeToken(&lang_tok);
             while (t.type != TOKEN_EOF) {
                 freeToken(&t);
                 t = getNextToken(&cursor);
