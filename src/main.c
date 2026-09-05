@@ -1369,7 +1369,6 @@ void execute_block(int start, int end) {
                 }
             }
             if (active_watch.active && active_watch.triggered) {
-                i = current_idx;
                 break;
             }
             i = current_idx;
@@ -1575,11 +1574,6 @@ void execute_block(int start, int end) {
             }
 
             if (is_error_name(unless_expr)) {
-                // If mode is default, errors default to internal
-                if (mode == MODE_DEFAULT) {
-                    mode = MODE_INTERNAL;
-                }
-
                 if (jmp_stack_ptr >= MAX_JMP_STACK) {
                     throw_error("SystemError", "Jump stack overflow on line %d", line->line_num);
                 }
