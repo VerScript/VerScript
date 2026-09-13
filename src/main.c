@@ -372,7 +372,12 @@ int is_critical_error(const char *name) {
 
 void throw_error(const char *name, const char *fmt, ...) {
     if (name != current_error_name) {
-        memmove(current_error_name, name, strlen(name) + 1);
+        size_t len = strlen(name);
+        if (len >= sizeof(current_error_name)) {
+            len = sizeof(current_error_name) - 1;
+        }
+        memmove(current_error_name, name, len);
+        current_error_name[len] = '\0';
     }
 
     char temp_msg[256];
