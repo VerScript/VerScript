@@ -352,6 +352,7 @@ void free_globals(void) {
         free(symtable);
         symtable = NULL;
     }
+    cleanup_lexer();
 }
 
 typedef struct {
@@ -632,6 +633,7 @@ int evaluate_expression(const char **cursor, char **out_str, int *out_type) {
                     size_t len1 = strlen(*out_str);
                     size_t len2 = strlen(rhs_str);
                     char *new_str = malloc(len1 + len2 + 1);
+                    if (!new_str) throw_error("MemoryAllocationError", "Memory allocation failed");
                     track_alloc(new_str);
                     memcpy(new_str, *out_str, len1);
                     memcpy(new_str + len1, rhs_str, len2 + 1);
@@ -644,6 +646,7 @@ int evaluate_expression(const char **cursor, char **out_str, int *out_type) {
                     size_t len1 = strlen(*out_str);
                     size_t len2 = strlen(num_str);
                     char *new_str = malloc(len1 + len2 + 1);
+                    if (!new_str) throw_error("MemoryAllocationError", "Memory allocation failed");
                     track_alloc(new_str);
                     memcpy(new_str, *out_str, len1);
                     memcpy(new_str + len1, num_str, len2 + 1);
@@ -656,6 +659,7 @@ int evaluate_expression(const char **cursor, char **out_str, int *out_type) {
                     size_t len1 = strlen(num_str);
                     size_t len2 = strlen(rhs_str);
                     char *new_str = malloc(len1 + len2 + 1);
+                    if (!new_str) throw_error("MemoryAllocationError", "Memory allocation failed");
                     track_alloc(new_str);
                     memcpy(new_str, num_str, len1);
                     memcpy(new_str + len1, rhs_str, len2 + 1);
@@ -760,6 +764,9 @@ void parse_lines(const char *buffer) {
 
         int raw_len = eol - p;
         char *raw_line = malloc(raw_len + 1);
+        if (!raw_line) {
+            throw_error("MemoryAllocationError", "Memory allocation failed");
+        }
         memcpy(raw_line, p, raw_len);
         raw_line[raw_len] = '\0';
 
@@ -1244,6 +1251,7 @@ void execute_block(int start, int end) {
             }
             int cond_len = then_ptr - cursor;
             char *cond_str = malloc(cond_len + 1);
+            if (!cond_str) throw_error("MemoryAllocationError", "Memory allocation failed");
             track_alloc(cond_str);
             strncpy(cond_str, cursor, cond_len);
             cond_str[cond_len] = '\0';
@@ -1319,6 +1327,7 @@ void execute_block(int start, int end) {
                         }
                         int elif_cond_len = elif_then_ptr - elif_cursor;
                         char *elif_cond_str = malloc(elif_cond_len + 1);
+                        if (!elif_cond_str) throw_error("MemoryAllocationError", "Memory allocation failed");
                         track_alloc(elif_cond_str);
                         strncpy(elif_cond_str, elif_cursor, elif_cond_len);
                         elif_cond_str[elif_cond_len] = '\0';
@@ -1412,6 +1421,7 @@ void execute_block(int start, int end) {
 
             int cond_len = step_ptr ? (int)(step_ptr - cursor) : (int)strlen(cursor);
             char *cond_buf = malloc(cond_len + 1);
+            if (!cond_buf) throw_error("MemoryAllocationError", "Memory allocation failed");
             track_alloc(cond_buf);
             strncpy(cond_buf, cursor, cond_len);
             cond_buf[cond_len] = '\0';
@@ -1482,6 +1492,7 @@ void execute_block(int start, int end) {
 
             int cond_len = step_ptr ? (int)(step_ptr - cursor) : (int)strlen(cursor);
             char *cond_buf = malloc(cond_len + 1);
+            if (!cond_buf) throw_error("MemoryAllocationError", "Memory allocation failed");
             track_alloc(cond_buf);
             strncpy(cond_buf, cursor, cond_len);
             cond_buf[cond_len] = '\0';
