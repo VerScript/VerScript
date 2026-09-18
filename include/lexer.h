@@ -47,5 +47,6 @@ Token getNextToken(const char **cursor);
 void track_alloc(char *ptr);
 void untrack_alloc(char *ptr);
 void free_all_tracked(void);
+void cleanup_lexer(void);
 
 #endif

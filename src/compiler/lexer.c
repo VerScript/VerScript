@@ -4,13 +4,24 @@
 #include <ctype.h>
 #include "../../include/lexer.h"
 
-char *tracked_allocs[1024];
+char **tracked_allocs = NULL;
 int tracked_alloc_count = 0;
+int tracked_alloc_capacity = 0;
 
 void track_alloc(char *ptr) {
-    if (tracked_alloc_count < 1024 && ptr != NULL) {
-        tracked_allocs[tracked_alloc_count++] = ptr;
+    if (ptr == NULL) return;
+    if (tracked_alloc_count >= tracked_alloc_capacity) {
+        int new_cap = (tracked_alloc_capacity == 0) ? 1024 : tracked_alloc_capacity * 2;
+        char **tmp = realloc(tracked_allocs, new_cap * sizeof(char *));
+        if (!tmp) {
+            printf("ERROR: MemoryAllocationError: Tracked allocator out of memory\n");
+            if (tracked_allocs) { free(tracked_allocs); }
+            exit(1);
+        }
+        tracked_allocs = tmp;
+        tracked_alloc_capacity = new_cap;
     }
+    tracked_allocs[tracked_alloc_count++] = ptr;
 }
 
 void untrack_alloc(char *ptr) {
@@ -30,6 +41,15 @@ void free_all_tracked(void) {
         }
     }
     tracked_alloc_count = 0;
+}
+
+void cleanup_lexer(void) {
+    free_all_tracked();
+    if (tracked_allocs) {
+        free(tracked_allocs);
+        tracked_allocs = NULL;
+        tracked_alloc_capacity = 0;
+    }
 }
 
 Token getNextToken(const char **cursor) {
@@ -140,6 +160,7 @@ Token getNextToken(const char **cursor) {
 
         token.type = TOKEN_IDENTIFIER;
         token.value = malloc(len + 1);
+        if (!token.value) { printf("ERROR: MemoryAllocationError\n"); exit(1); }
         track_alloc(token.value);
         strncpy(token.value, start, len);
         token.value[len] = '\0';
@@ -152,6 +173,7 @@ Token getNextToken(const char **cursor) {
         while (isdigit((unsigned char)**cursor)) (*cursor)++;
         size_t len = *cursor - start;
         token.value = malloc(len + 1);
+        if (!token.value) { printf("ERROR: MemoryAllocationError\n"); exit(1); }
         track_alloc(token.value);
         strncpy(token.value, start, len);
         token.value[len] = '\0';
@@ -180,6 +202,7 @@ Token getNextToken(const char **cursor) {
         while (**cursor != '"' && **cursor != '\0') (*cursor)++;
         size_t len = *cursor - start;
         token.value = malloc(len + 1);
+        if (!token.value) { printf("ERROR: MemoryAllocationError\n"); exit(1); }
         track_alloc(token.value);
         strncpy(token.value, start, len);
         token.value[len] = '\0';
@@ -195,6 +218,7 @@ Token getNextToken(const char **cursor) {
         while (isxdigit((unsigned char)**cursor) || isalnum((unsigned char)**cursor) || **cursor == '_') (*cursor)++;
         size_t len = *cursor - start;
         token.value = malloc(len + 1);
+        if (!token.value) { printf("ERROR: MemoryAllocationError\n"); exit(1); }
         track_alloc(token.value);
         strncpy(token.value, start, len);
         token.value[len] = '\0';
@@ -205,6 +229,7 @@ Token getNextToken(const char **cursor) {
     // Unknown single character error
     token.type = TOKEN_ERROR;
     token.value = malloc(2);
+    if (!token.value) { printf("ERROR: MemoryAllocationError\n"); exit(1); }
     track_alloc(token.value);
     token.value[0] = **cursor;
     token.value[1] = '\0';
