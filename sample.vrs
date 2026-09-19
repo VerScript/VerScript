@@ -1,40 +1,62 @@
 !!
-  VerScript Language Showcase — v1.2.0
-  Featuring:
-    1: Multiline Comments and Single-line Comments
-    2: Command Attributes (?color, ?newline=false, ?default, ?msg)
-    3: Stepped Iteration & Loops (iterate i from x to y step z)
-    4: Exception Handling (do ... unless) & Custom Throws
-    5: System Block Operators (SuppressErrors, CriticalErrors)
+  VerScript Comprehensive Showcase — v2.0
+  Showcasing:
+    1: Custom Functions (def func ... reply) & Purity Contracts (inbound/outbound)
+    2: Methods (def method) with State Mutation & Early Return (reply)
+    3: Explicit Variable Assignment with "set" keyword
+    4: ANSI & TrueColor Hex Attributes (?color=#38bdf8, ?newline=false)
+    5: Command Aliasing & Polyglot Injections
+    6: Robust Error Handling (do ... unless) & ScopeViolationError
 !!
 
-display "=== 1. ANSI Color & Formatting Attributes ===" ?color="cyan"
-display "Success: VerScript Engine Online!" ?color="green"
-display "Warning: High memory utilization detected." ?color="yellow"
-display "Error: DivisionByZero handled gracefully." ?color="red"
+display "=== 1. Explicit Variable Setting ===" ?color=#38bdf8
+set status: "Engine Operational"
+set base_power: 50
+set boost_multiplier: 3
+display "System Status: " + status ?color=#22c55e
 
-display "=== 2. Inline Printing with ?newline=false ===" ?color="purple"
-display "Loading modules: [" ?newline=false ?color="cyan"
-display "Core, " ?newline=false ?color="yellow"
-display "Lexer, " ?newline=false ?color="yellow"
-display "VS#-1B Neural Engine] " ?newline=false ?color="cyan"
-display "Done!" ?color="green"
+display "=== 2. Pure Custom Functions (Inbound by default) ===" ?color=#c084fc
+def func calculate_power base mult
+  reply base * mult
 
-display "=== 3. Stepped Iteration Showcase ===" ?color="cyan"
-iterate count from 1 to 10 step 2
-  display "Iteration Step: " + count ?color="cyan"
+set total_power: (calculate_power base_power boost_multiplier)
+display "Calculated Total Power: " + total_power ?color=#38bdf8
 
-display "=== 4. Exception Handling & Custom Throws ===" ?color="purple"
+display "=== 3. Scope Isolation & Purity Enforcement ===" ?color=#fbbf24
+def func pure_routine delta
+  ! Modifying outer variables from an inbound function raises ScopeViolationError
+  set base_power: base_power + delta
+  reply base_power
+
 do
-  display "Triggering custom exception with ?msg attribute..." ?color="yellow"
-  throw DivisionByZeroError ?msg="Division by zero in calculate_ratio()"
-unless DivisionByZeroError
-  display "Caught Exception: " + error ?color="green"
+  res: (pure_routine 100)
+unless ScopeViolationError
+  display "Purity Guard Active: Caught ScopeViolationError successfully!" ?color=#22c55e
 
-display "=== 5. Error Suppression Block Operator ===" ?color="cyan"
-SuppressErrors
-  display "Running invalid operation under SuppressErrors..." ?color="yellow"
-  invalid_val : 10 / 0
-  display "Division by zero bypassed cleanly!" ?color="green"
+display "=== 4. Custom Methods (Stateful & Void) ===" ?color=#c084fc
+set system_cycles: 0
 
-display "=== VerScript Execution Complete ===" ?color="green"
+def method run_diagnostics iterations
+  iterate step from 1 to iterations step 1
+    if step = 3 then
+      set system_cycles: system_cycles + step
+      reply ! Early exit
+    set system_cycles: system_cycles + step
+
+run_diagnostics 5
+display "System Cycles after method call: " + system_cycles ?color=#38bdf8
+
+display "=== 5. Command Aliasing & Hex Colors ===" ?color=#38bdf8
+alias display: log
+log "Logging via custom alias with Hex Color #38bdf8!" ?color=#38bdf8
+
+display "=== 6. Polyglot Code Injection ===" ?color=#fbbf24
+inject python ?color=yellow
+  def py_helper(val):
+      return f"Python processing {val}"
+  print("Polyglot layer executed cleanly")
+
+inject verscript
+  display "Dynamic nested VerScript runtime active!" ?color=#22c55e
+
+display "=== VerScript v2.0 System Ready ===" ?color=#22c55e

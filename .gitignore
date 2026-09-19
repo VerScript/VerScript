@@ -1,2 +1,6 @@
 *.o
 verscript
+*.exe
+build.log
+err.txt
+scratch/

@@ -14,6 +14,7 @@ typedef struct {
     VarType type;
     int int_val;
     char *string_val;
+    int scope_level;
 } Variable;
 
 Variable *symtable = NULL;
@@ -49,6 +50,248 @@ int get_attribute_str(const char *full_text, const char *key, char *out_val, int
     return 0;
 }
 
+void apply_color(const char *col) {
+    if (!col || col[0] == '\0') return;
+    if (strcmp(col, "green") == 0) printf("\033[32m");
+    else if (strcmp(col, "red") == 0) printf("\033[31m");
+    else if (strcmp(col, "yellow") == 0) printf("\033[33m");
+    else if (strcmp(col, "blue") == 0) printf("\033[34m");
+    else if (strcmp(col, "purple") == 0) printf("\033[35m");
+    else if (strcmp(col, "cyan") == 0) printf("\033[36m");
+    else if (strcmp(col, "white") == 0) printf("\033[37m");
+    else if (col[0] == '#') {
+        int r = 0, g = 0, b = 0;
+        int len = strlen(col);
+        if (len == 7) {
+            if (sscanf(col + 1, "%02x%02x%02x", &r, &g, &b) == 3) {
+                printf("\033[38;2;%d;%d;%dm", r, g, b);
+            }
+        } else if (len == 4) {
+            if (sscanf(col + 1, "%1x%1x%1x", &r, &g, &b) == 3) {
+                printf("\033[38;2;%d;%d;%dm", r * 17, g * 17, b * 17);
+            }
+        }
+    }
+}
+
+typedef struct {
+    char from_arg[64]; // aliased attribute/arg name
+    char to_arg[64];   // canonical attribute/arg name
+} ArgMapping;
+
+typedef struct {
+    char target_cmd[64]; // original target command (e.g. "display")
+    char alias_name[64]; // new alias name (e.g. "print")
+    ArgMapping mappings[16];
+    int mapping_count;
+} CommandAlias;
+
+#define MAX_ALIASES 128
+CommandAlias aliases[MAX_ALIASES];
+int alias_count = 0;
+
+void add_command_alias(const char *target_cmd, const char *alias_name, ArgMapping *mappings, int mapping_count) {
+    if (!target_cmd || !alias_name || !*target_cmd || !*alias_name) return;
+    for (int i = 0; i < alias_count; i++) {
+        if (strcmp(aliases[i].alias_name, alias_name) == 0) {
+            strncpy(aliases[i].target_cmd, target_cmd, sizeof(aliases[i].target_cmd) - 1);
+            aliases[i].target_cmd[sizeof(aliases[i].target_cmd) - 1] = '\0';
+            aliases[i].mapping_count = mapping_count;
+            for (int j = 0; j < mapping_count && j < 16; j++) {
+                aliases[i].mappings[j] = mappings[j];
+            }
+            return;
+        }
+    }
+    if (alias_count < MAX_ALIASES) {
+        CommandAlias *a = &aliases[alias_count++];
+        strncpy(a->target_cmd, target_cmd, sizeof(a->target_cmd) - 1);
+        a->target_cmd[sizeof(a->target_cmd) - 1] = '\0';
+        strncpy(a->alias_name, alias_name, sizeof(a->alias_name) - 1);
+        a->alias_name[sizeof(a->alias_name) - 1] = '\0';
+        a->mapping_count = mapping_count;
+        for (int j = 0; j < mapping_count && j < 16; j++) {
+            a->mappings[j] = mappings[j];
+        }
+    }
+}
+
+CommandAlias* find_alias(const char *alias_name) {
+    for (int i = 0; i < alias_count; i++) {
+        if (strcmp(aliases[i].alias_name, alias_name) == 0) return &aliases[i];
+    }
+    return NULL;
+}
+
+void parse_and_register_alias(const char *spec) {
+    if (!spec) return;
+    while (isspace((unsigned char)*spec)) spec++;
+    if (strncmp(spec, "alias", 5) == 0 && (isspace((unsigned char)spec[5]) || spec[5] == ':')) {
+        spec += 5;
+        while (isspace((unsigned char)*spec)) spec++;
+    }
+    if (*spec == '\0' || *spec == ':') return;
+
+    const char *p = spec;
+    while (*p && (isalnum((unsigned char)*p) || *p == '_')) p++;
+    int cmd1_len = p - spec;
+    if (cmd1_len <= 0) return;
+    char cmd1[64];
+    if (cmd1_len >= 64) cmd1_len = 63;
+    strncpy(cmd1, spec, cmd1_len);
+    cmd1[cmd1_len] = '\0';
+
+    while (isspace((unsigned char)*p)) p++;
+    if (*p == ':') p++;
+    while (isspace((unsigned char)*p)) p++;
+
+    const char *p2 = p;
+    while (*p2 && (isalnum((unsigned char)*p2) || *p2 == '_')) p2++;
+    int cmd2_len = p2 - p;
+    if (cmd2_len <= 0) return;
+    char cmd2[64];
+    if (cmd2_len >= 64) cmd2_len = 63;
+    strncpy(cmd2, p, cmd2_len);
+    cmd2[cmd2_len] = '\0';
+    p = p2;
+
+    ArgMapping mappings[16];
+    int mapping_count = 0;
+
+    while (isspace((unsigned char)*p)) p++;
+    if (*p == '?') {
+        p++;
+        while (*p != '\0' && *p != '\n' && mapping_count < 16) {
+            while (isspace((unsigned char)*p) || *p == ',') p++;
+            if (*p == '\0' || *p == '\n') break;
+            const char *arg_start = p;
+            while (*p && (isalnum((unsigned char)*p) || *p == '_')) p++;
+            int a1_len = p - arg_start;
+            if (a1_len <= 0) break;
+            char a1[64];
+            if (a1_len >= 64) a1_len = 63;
+            strncpy(a1, arg_start, a1_len);
+            a1[a1_len] = '\0';
+
+            while (isspace((unsigned char)*p)) p++;
+            if (*p == '=') {
+                p++;
+                while (isspace((unsigned char)*p)) p++;
+                const char *a2_start = p;
+                while (*p && (isalnum((unsigned char)*p) || *p == '_')) p++;
+                int a2_len = p - a2_start;
+                if (a2_len > 0) {
+                    char a2[64];
+                    if (a2_len >= 64) a2_len = 63;
+                    strncpy(a2, a2_start, a2_len);
+                    a2[a2_len] = '\0';
+                    strncpy(mappings[mapping_count].to_arg, a1, 63);
+                    mappings[mapping_count].to_arg[63] = '\0';
+                    strncpy(mappings[mapping_count].from_arg, a2, 63);
+                    mappings[mapping_count].from_arg[63] = '\0';
+                    mapping_count++;
+                }
+            } else {
+                strncpy(mappings[mapping_count].from_arg, a1, 63);
+                mappings[mapping_count].from_arg[63] = '\0';
+                strncpy(mappings[mapping_count].to_arg, a1, 63);
+                mappings[mapping_count].to_arg[63] = '\0';
+                mapping_count++;
+            }
+        }
+    }
+
+    add_command_alias(cmd1, cmd2, mappings, mapping_count);
+}
+
+char* resolve_alias_line(const char *line_text, char *out_buf, size_t out_buf_size) {
+    if (!line_text || !out_buf || out_buf_size == 0) return (char*)line_text;
+    const char *p = line_text;
+    while (isspace((unsigned char)*p)) p++;
+    if (*p == '\0' || *p == '!') {
+        strncpy(out_buf, line_text, out_buf_size - 1);
+        out_buf[out_buf_size - 1] = '\0';
+        return out_buf;
+    }
+
+    const char *cmd_start = p;
+    while (*p && (isalnum((unsigned char)*p) || *p == '_')) p++;
+    int cmd_len = p - cmd_start;
+    if (cmd_len <= 0) {
+        strncpy(out_buf, line_text, out_buf_size - 1);
+        out_buf[out_buf_size - 1] = '\0';
+        return out_buf;
+    }
+
+    char cmd[64];
+    if (cmd_len >= 64) cmd_len = 63;
+    strncpy(cmd, cmd_start, cmd_len);
+    cmd[cmd_len] = '\0';
+
+    CommandAlias *a = find_alias(cmd);
+    if (!a) {
+        strncpy(out_buf, line_text, out_buf_size - 1);
+        out_buf[out_buf_size - 1] = '\0';
+        return out_buf;
+    }
+
+    int prefix_len = cmd_start - line_text;
+    int pos = 0;
+    if (prefix_len > 0 && pos + prefix_len < (int)out_buf_size - 1) {
+        strncpy(out_buf + pos, line_text, prefix_len);
+        pos += prefix_len;
+    }
+
+    int tgt_len = strlen(a->target_cmd);
+    if (pos + tgt_len < (int)out_buf_size - 1) {
+        strcpy(out_buf + pos, a->target_cmd);
+        pos += tgt_len;
+    }
+
+    const char *rem = p;
+    while (*rem != '\0' && pos < (int)out_buf_size - 1) {
+        if (*rem == '?') {
+            const char *q_start = rem;
+            rem++;
+            const char *arg_start = rem;
+            while (*rem && (isalnum((unsigned char)*rem) || *rem == '_')) rem++;
+            int arg_len = rem - arg_start;
+            char cur_arg[64] = "";
+            if (arg_len > 0 && arg_len < 64) {
+                strncpy(cur_arg, arg_start, arg_len);
+                cur_arg[arg_len] = '\0';
+            }
+
+            const char *mapped_to = NULL;
+            for (int m = 0; m < a->mapping_count; m++) {
+                if (strcmp(a->mappings[m].from_arg, cur_arg) == 0) {
+                    mapped_to = a->mappings[m].to_arg;
+                    break;
+                }
+            }
+
+            if (mapped_to) {
+                out_buf[pos++] = '?';
+                int m_len = strlen(mapped_to);
+                if (pos + m_len < (int)out_buf_size - 1) {
+                    strcpy(out_buf + pos, mapped_to);
+                    pos += m_len;
+                }
+            } else {
+                int orig_len = rem - q_start;
+                if (pos + orig_len < (int)out_buf_size - 1) {
+                    strncpy(out_buf + pos, q_start, orig_len);
+                    pos += orig_len;
+                }
+            }
+        } else {
+            out_buf[pos++] = *rem++;
+        }
+    }
+    out_buf[pos] = '\0';
+    return out_buf;
+}
+
 #define MAX_JMP_STACK 64
 jmp_buf jmp_env_stack[MAX_JMP_STACK];
 int jmp_stack_ptr = 0;
@@ -68,6 +311,7 @@ char current_error_msg[256] = "";
 int error_mode = ERR_MODE_NORMAL;
 jmp_buf suppress_jmp_env;
 int suppress_jmp_active = 0;
+int current_executing_line = 1;
 
 char *source_buffer = NULL;
 
@@ -81,11 +325,28 @@ Line *lines = NULL;
 int line_count = 0;
 int line_capacity = 0;
 
+typedef struct {
+    int has_replied;
+    int int_val;
+    char *string_val;
+    VarType type;
+} ReplyResult;
+
+ReplyResult current_reply = {0, 0, NULL, VAR_INT};
+int call_stack_ptr = 0;
+int current_scope_depth = 0;
+
 void free_globals(void) {
     if (source_buffer) {
         free(source_buffer);
         source_buffer = NULL;
     }
+    if (current_reply.string_val) {
+        free(current_reply.string_val);
+        current_reply.string_val = NULL;
+    }
+    call_stack_ptr = 0;
+    current_scope_depth = 0;
     if (lines) {
         for (int i = 0; i < line_count; i++) {
             if (lines[i].text) {
@@ -130,7 +391,7 @@ int is_critical_error(const char *name) {
 
 void throw_error(const char *name, const char *fmt, ...) {
     if (name != current_error_name) {
-        strcpy(current_error_name, name);
+        memmove(current_error_name, name, strlen(name) + 1);
     }
 
     char temp_msg[256];
@@ -139,7 +400,7 @@ void throw_error(const char *name, const char *fmt, ...) {
     vsnprintf(temp_msg, sizeof(temp_msg), fmt, args);
     va_end(args);
 
-    strcpy(current_error_msg, temp_msg);
+    memmove(current_error_msg, temp_msg, strlen(temp_msg) + 1);
 
     if (error_mode == ERR_MODE_FORCE) {
         free_all_tracked();
@@ -183,11 +444,52 @@ int is_error_name(const char *name) {
     if (strcmp(name, "LoopIterationError") == 0) return 1;
     if (strcmp(name, "LoopLimitError") == 0) return 1;
     if (strcmp(name, "LoopDirectionError") == 0) return 1;
+    if (strcmp(name, "LoopStepError") == 0) return 1;
+    if (strcmp(name, "ScopeViolationError") == 0) return 1;
     if (strcmp(name, "SyntaxError") == 0) return 1;
     if (strcmp(name, "RuntimeError") == 0) return 1;
     if (strcmp(name, "InvalidErrorNameError") == 0) return 1;
     if (strcmp(name, "SystemError") == 0) return 1;
     return 0;
+}
+
+typedef enum {
+    ROUTINE_FUNC,
+    ROUTINE_METHOD
+} RoutineKind;
+
+typedef enum {
+    PURITY_INBOUND,
+    PURITY_OUTBOUND
+} PurityKind;
+
+typedef struct {
+    char name[64];
+    RoutineKind kind;
+    PurityKind purity;
+    char params[16][64];
+    int param_count;
+    int body_start_line;
+    int body_end_line;
+} Routine;
+
+#define MAX_ROUTINES 128
+Routine routines[MAX_ROUTINES];
+int routine_count = 0;
+
+typedef struct {
+    Routine *routine;
+    int caller_scope_level;
+} CallFrame;
+
+#define MAX_CALL_STACK 64
+CallFrame call_stack[MAX_CALL_STACK];
+
+Routine* find_routine(const char *name) {
+    for (int i = 0; i < routine_count; i++) {
+        if (strcmp(routines[i].name, name) == 0) return &routines[i];
+    }
+    return NULL;
 }
 
 Variable* get_var(const char *name) {
@@ -216,6 +518,7 @@ Variable* get_var(const char *name) {
             v->type = VAR_STRING;
             v->int_val = 0;
             v->string_val = strdup(current_error_name);
+            v->scope_level = 0;
         } else {
             v->type = VAR_STRING;
             if (v->string_val) free(v->string_val);
@@ -223,15 +526,54 @@ Variable* get_var(const char *name) {
         }
         return v;
     }
-    for (int i = 0; i < var_count; i++) {
+    for (int i = var_count - 1; i >= 0; i--) {
         if (strcmp(symtable[i].name, name) == 0) return &symtable[i];
     }
     return NULL;
 }
 
-Variable* set_var(const char *name) {
-    Variable* v = get_var(name);
-    if (v) return v;
+void pop_scope(int target_depth) {
+    while (var_count > 0 && symtable[var_count - 1].scope_level > target_depth) {
+        var_count--;
+        if (symtable[var_count].name) {
+            free(symtable[var_count].name);
+            symtable[var_count].name = NULL;
+        }
+        if (symtable[var_count].string_val) {
+            free(symtable[var_count].string_val);
+            symtable[var_count].string_val = NULL;
+        }
+    }
+}
+
+Variable* set_var_scoped(const char *name, int line_num) {
+    if (strcmp(name, "error") == 0) {
+        return get_var("error");
+    }
+
+    Variable *existing = NULL;
+    for (int i = var_count - 1; i >= 0; i--) {
+        if (strcmp(symtable[i].name, name) == 0) {
+            existing = &symtable[i];
+            break;
+        }
+    }
+
+    if (existing) {
+        if (existing->scope_level < current_scope_depth) {
+            PurityKind cur_purity = PURITY_OUTBOUND;
+            const char *rname = "routine";
+            if (call_stack_ptr > 0) {
+                cur_purity = call_stack[call_stack_ptr - 1].routine->purity;
+                rname = call_stack[call_stack_ptr - 1].routine->name;
+            }
+            if (cur_purity == PURITY_INBOUND) {
+                throw_error("ScopeViolationError", "Inbound routine '%s' cannot modify outer variable '%s' on line %d", rname, name, line_num);
+            }
+            return existing;
+        }
+        return existing;
+    }
 
     if (var_count >= var_capacity) {
         int new_capacity = (var_capacity == 0) ? 100 : var_capacity * 2;
@@ -243,12 +585,17 @@ Variable* set_var(const char *name) {
         var_capacity = new_capacity;
     }
 
-    v = &symtable[var_count++];
+    Variable *v = &symtable[var_count++];
     v->name = strdup(name);
     v->type = VAR_INT;
     v->int_val = 0;
     v->string_val = NULL;
+    v->scope_level = current_scope_depth;
     return v;
+}
+
+Variable* set_var(const char *name) {
+    return set_var_scoped(name, current_executing_line);
 }
 
 Token peekToken(const char **cursor) {
@@ -264,8 +611,202 @@ void freeToken(Token *t) {
     }
 }
 
-// Simple evaluator for left-to-right math
-int evaluate_expression(const char **cursor, char **out_str, int *out_type) {
+// Forward declarations
+void execute_block(int start, int end);
+int evaluate_expression(const char **cursor, char **out_str, int *out_type);
+int evaluate_operand(const char **cursor, char **out_str, int *out_type);
+void call_routine(Routine *r, const char **cursor, int line_num);
+void call_routine_val(Routine *r, const char **cursor, char **out_str, int *out_type, int *out_int, int line_num);
+
+int evaluate_argument(const char **cursor, char **out_str, int *out_type, int *out_int) {
+    Token peek = peekToken(cursor);
+    if (peek.type == TOKEN_LPAREN) {
+        freeToken(&peek);
+        Token lp = getNextToken(cursor);
+        freeToken(&lp);
+        Token inner_peek = peekToken(cursor);
+        Routine *r = NULL;
+        if (inner_peek.type == TOKEN_IDENTIFIER) {
+            r = find_routine(inner_peek.value);
+        }
+        if (r && r->kind == ROUTINE_FUNC) {
+            Token fn_tok = getNextToken(cursor);
+            freeToken(&fn_tok);
+            call_routine_val(r, cursor, out_str, out_type, out_int, current_executing_line);
+        } else {
+            *out_int = evaluate_expression(cursor, out_str, out_type);
+        }
+        freeToken(&inner_peek);
+        Token rp = getNextToken(cursor);
+        if (rp.type != TOKEN_RPAREN) {
+            freeToken(&rp);
+            throw_error("SyntaxError", "Expected ')' after argument expression on line %d", current_executing_line);
+        }
+        freeToken(&rp);
+        return 1;
+    }
+    freeToken(&peek);
+    *out_int = evaluate_operand(cursor, out_str, out_type);
+    return 1;
+}
+
+void call_routine(Routine *r, const char **cursor, int line_num) {
+    if (call_stack_ptr >= MAX_CALL_STACK) {
+        throw_error("SystemError", "Maximum call stack depth exceeded on line %d", line_num);
+    }
+
+    typedef struct {
+        int int_val;
+        char *str_val;
+        int type;
+    } EvaluatedArg;
+
+    EvaluatedArg evaluated_args[16];
+    for (int p = 0; p < r->param_count; p++) {
+        char *arg_str = NULL;
+        int arg_type = VAR_INT;
+        int arg_int = 0;
+        evaluate_argument(cursor, &arg_str, &arg_type, &arg_int);
+        evaluated_args[p].int_val = arg_int;
+        evaluated_args[p].str_val = arg_str;
+        evaluated_args[p].type = arg_type;
+    }
+
+    int prev_scope = current_scope_depth;
+    current_scope_depth++;
+
+    CallFrame *frame = &call_stack[call_stack_ptr++];
+    frame->routine = r;
+    frame->caller_scope_level = prev_scope;
+
+    for (int p = 0; p < r->param_count; p++) {
+        if (var_count >= var_capacity) {
+            int new_capacity = (var_capacity == 0) ? 100 : var_capacity * 2;
+            Variable *tmp = realloc(symtable, new_capacity * sizeof(Variable));
+            if (!tmp) {
+                throw_error("MemoryAllocationError", "Memory allocation failed");
+            }
+            symtable = tmp;
+            var_capacity = new_capacity;
+        }
+        Variable *param_var = &symtable[var_count++];
+        param_var->name = strdup(r->params[p]);
+        param_var->scope_level = current_scope_depth;
+        param_var->type = evaluated_args[p].type;
+        param_var->int_val = evaluated_args[p].int_val;
+        if (evaluated_args[p].str_val) {
+            untrack_alloc(evaluated_args[p].str_val);
+            param_var->string_val = evaluated_args[p].str_val;
+        } else {
+            param_var->string_val = NULL;
+        }
+    }
+
+    ReplyResult prev_reply = current_reply;
+    current_reply.has_replied = 0;
+    current_reply.int_val = 0;
+    current_reply.string_val = NULL;
+    current_reply.type = VAR_INT;
+
+    if (r->body_start_line <= r->body_end_line) {
+        execute_block(r->body_start_line, r->body_end_line);
+    }
+
+    ReplyResult routine_reply = current_reply;
+
+    pop_scope(prev_scope);
+    current_scope_depth = prev_scope;
+    call_stack_ptr--;
+
+    if (routine_reply.string_val) {
+        free(routine_reply.string_val);
+    }
+    current_reply = prev_reply;
+}
+
+void call_routine_val(Routine *r, const char **cursor, char **out_str, int *out_type, int *out_int, int line_num) {
+    if (r->kind == ROUTINE_METHOD) {
+        throw_error("SyntaxError", "Cannot use method '%s' in an expression on line %d", r->name, line_num);
+    }
+    if (call_stack_ptr >= MAX_CALL_STACK) {
+        throw_error("SystemError", "Maximum call stack depth exceeded on line %d", line_num);
+    }
+
+    typedef struct {
+        int int_val;
+        char *str_val;
+        int type;
+    } EvaluatedArg;
+
+    EvaluatedArg evaluated_args[16];
+    for (int p = 0; p < r->param_count; p++) {
+        char *arg_str = NULL;
+        int arg_type = VAR_INT;
+        int arg_int = 0;
+        evaluate_argument(cursor, &arg_str, &arg_type, &arg_int);
+        evaluated_args[p].int_val = arg_int;
+        evaluated_args[p].str_val = arg_str;
+        evaluated_args[p].type = arg_type;
+    }
+
+    int prev_scope = current_scope_depth;
+    current_scope_depth++;
+
+    CallFrame *frame = &call_stack[call_stack_ptr++];
+    frame->routine = r;
+    frame->caller_scope_level = prev_scope;
+
+    for (int p = 0; p < r->param_count; p++) {
+        if (var_count >= var_capacity) {
+            int new_capacity = (var_capacity == 0) ? 100 : var_capacity * 2;
+            Variable *tmp = realloc(symtable, new_capacity * sizeof(Variable));
+            if (!tmp) {
+                throw_error("MemoryAllocationError", "Memory allocation failed");
+            }
+            symtable = tmp;
+            var_capacity = new_capacity;
+        }
+        Variable *param_var = &symtable[var_count++];
+        param_var->name = strdup(r->params[p]);
+        param_var->scope_level = current_scope_depth;
+        param_var->type = evaluated_args[p].type;
+        param_var->int_val = evaluated_args[p].int_val;
+        if (evaluated_args[p].str_val) {
+            untrack_alloc(evaluated_args[p].str_val);
+            param_var->string_val = evaluated_args[p].str_val;
+        } else {
+            param_var->string_val = NULL;
+        }
+    }
+
+    ReplyResult prev_reply = current_reply;
+    current_reply.has_replied = 0;
+    current_reply.int_val = 0;
+    current_reply.string_val = NULL;
+    current_reply.type = VAR_INT;
+
+    if (r->body_start_line <= r->body_end_line) {
+        execute_block(r->body_start_line, r->body_end_line);
+    }
+
+    ReplyResult routine_reply = current_reply;
+
+    pop_scope(prev_scope);
+    current_scope_depth = prev_scope;
+    call_stack_ptr--;
+
+    *out_int = routine_reply.int_val;
+    *out_type = routine_reply.type;
+    if (routine_reply.string_val) {
+        *out_str = routine_reply.string_val;
+        track_alloc(*out_str);
+    } else {
+        *out_str = NULL;
+    }
+    current_reply = prev_reply;
+}
+
+int evaluate_operand(const char **cursor, char **out_str, int *out_type) {
     *out_str = NULL;
     *out_type = VAR_INT;
     Token t = getNextToken(cursor);
@@ -282,108 +823,104 @@ int evaluate_expression(const char **cursor, char **out_str, int *out_type) {
         acc = atoi(t.value) * sign;
     } else if (t.type == TOKEN_TRUE) {
         if (sign == -1) {
-            throw_error("InvalidOperandError", "Invalid operand for unary '-'");
+            throw_error("InvalidOperandError", "Invalid operand for unary '-' on line %d", current_executing_line);
         }
         acc = 1;
         *out_type = VAR_BOOL;
     } else if (t.type == TOKEN_FALSE) {
         if (sign == -1) {
-            throw_error("InvalidOperandError", "Invalid operand for unary '-'");
+            throw_error("InvalidOperandError", "Invalid operand for unary '-' on line %d", current_executing_line);
         }
         acc = 0;
         *out_type = VAR_BOOL;
     } else if (t.type == TOKEN_STRING) {
         if (sign == -1) {
-            throw_error("InvalidOperandError", "Invalid operand for unary '-'");
+            throw_error("InvalidOperandError", "Invalid operand for unary '-' on line %d", current_executing_line);
         }
         *out_str = strdup(t.value);
         track_alloc(*out_str);
         *out_type = VAR_STRING;
-    } else if (t.type == TOKEN_IDENTIFIER) {
-        Variable *v = get_var(t.value);
-        if (v) {
-            if (v->type == VAR_INT) acc = v->int_val * sign;
-            else if (v->type == VAR_BOOL) {
-                if (sign == -1) {
-                    throw_error("InvalidOperandError", "Invalid operand for unary '-'");
-                }
-                acc = v->int_val;
-                *out_type = VAR_BOOL;
+    } else if (t.type == TOKEN_LPAREN) {
+        Token peek = peekToken(cursor);
+        Routine *r = NULL;
+        if (peek.type == TOKEN_IDENTIFIER) {
+            r = find_routine(peek.value);
+        }
+        if (r && r->kind == ROUTINE_FUNC) {
+            Token fn_tok = getNextToken(cursor);
+            freeToken(&fn_tok);
+            call_routine_val(r, cursor, out_str, out_type, &acc, current_executing_line);
+        } else {
+            acc = evaluate_expression(cursor, out_str, out_type);
+        }
+        freeToken(&peek);
+        Token rp = getNextToken(cursor);
+        if (rp.type != TOKEN_RPAREN) {
+            freeToken(&rp);
+            throw_error("SyntaxError", "Expected ')' on line %d", current_executing_line);
+        }
+        freeToken(&rp);
+        if (sign == -1) {
+            if (*out_type != VAR_INT && *out_type != VAR_BOOL) {
+                throw_error("InvalidOperandError", "Invalid operand for unary '-' on line %d", current_executing_line);
             }
-            else {
-                if (sign == -1) {
-                    throw_error("InvalidOperandError", "Invalid operand for unary '-'");
+            acc *= -1;
+        }
+    } else if (t.type == TOKEN_IDENTIFIER) {
+        Routine *r = find_routine(t.value);
+        if (r) {
+            if (r->kind == ROUTINE_METHOD) {
+                throw_error("SyntaxError", "Cannot use method '%s' in an expression on line %d", r->name, current_executing_line);
+            }
+            call_routine_val(r, cursor, out_str, out_type, &acc, current_executing_line);
+            if (sign == -1) {
+                if (*out_type != VAR_INT && *out_type != VAR_BOOL) {
+                    throw_error("InvalidOperandError", "Invalid operand for unary '-' on line %d", current_executing_line);
                 }
-                *out_str = strdup(v->string_val);
-                track_alloc(*out_str);
-                *out_type = VAR_STRING;
+                acc *= -1;
             }
         } else {
-            throw_error("UndefinedVariableError", "Undefined variable '%s'", t.value);
+            Variable *v = get_var(t.value);
+            if (v) {
+                if (v->type == VAR_INT) acc = v->int_val * sign;
+                else if (v->type == VAR_BOOL) {
+                    if (sign == -1) {
+                        throw_error("InvalidOperandError", "Invalid operand for unary '-' on line %d", current_executing_line);
+                    }
+                    acc = v->int_val;
+                    *out_type = VAR_BOOL;
+                } else {
+                    if (sign == -1) {
+                        throw_error("InvalidOperandError", "Invalid operand for unary '-' on line %d", current_executing_line);
+                    }
+                    *out_str = strdup(v->string_val);
+                    track_alloc(*out_str);
+                    *out_type = VAR_STRING;
+                }
+            } else {
+                throw_error("UndefinedVariableError", "Undefined variable '%s' on line %d", t.value, current_executing_line);
+            }
         }
     } else {
-        throw_error("SyntaxError", "Expected value in expression");
+        throw_error("SyntaxError", "Expected value in expression on line %d", current_executing_line);
     }
     freeToken(&t);
+    return acc;
+}
+
+int evaluate_expression(const char **cursor, char **out_str, int *out_type) {
+    int acc = evaluate_operand(cursor, out_str, out_type);
 
     while (1) {
         Token op = peekToken(cursor);
         if (op.type == TOKEN_PLUS || op.type == TOKEN_MINUS || op.type == TOKEN_STAR || op.type == TOKEN_SLASH) {
             freeToken(&op);
-            Token op_consumed = getNextToken(cursor); // consume op
+            Token op_consumed = getNextToken(cursor);
             freeToken(&op_consumed);
-            Token rhs = getNextToken(cursor);
-            int rhs_val = 0;
+
             char *rhs_str = NULL;
-            int rhs_sign = 1;
-
-            if (rhs.type == TOKEN_MINUS) {
-                rhs_sign = -1;
-                freeToken(&rhs);
-                rhs = getNextToken(cursor);
-            }
-
-            if (rhs.type == TOKEN_NUMBER) {
-                rhs_val = atoi(rhs.value) * rhs_sign;
-            } else if (rhs.type == TOKEN_TRUE) {
-                if (rhs_sign == -1) {
-                    throw_error("InvalidOperandError", "Invalid operand for unary '-'");
-                }
-                rhs_val = 1;
-            } else if (rhs.type == TOKEN_FALSE) {
-                if (rhs_sign == -1) {
-                    throw_error("InvalidOperandError", "Invalid operand for unary '-'");
-                }
-                rhs_val = 0;
-            } else if (rhs.type == TOKEN_STRING) {
-                if (rhs_sign == -1) {
-                    throw_error("InvalidOperandError", "Invalid operand for unary '-'");
-                }
-                rhs_str = strdup(rhs.value);
-                track_alloc(rhs_str);
-            } else if (rhs.type == TOKEN_IDENTIFIER) {
-                Variable *v = get_var(rhs.value);
-                if (v) {
-                    if (v->type == VAR_INT) rhs_val = v->int_val * rhs_sign;
-                    else if (v->type == VAR_BOOL) {
-                        if (rhs_sign == -1) {
-                            throw_error("InvalidOperandError", "Invalid operand for unary '-'");
-                        }
-                        rhs_val = v->int_val;
-                    }
-                    else {
-                        if (rhs_sign == -1) {
-                            throw_error("InvalidOperandError", "Invalid operand for unary '-'");
-                        }
-                        rhs_str = strdup(v->string_val);
-                        track_alloc(rhs_str);
-                    }
-                } else {
-                    throw_error("UndefinedVariableError", "Undefined variable '%s'", rhs.value);
-                }
-            } else {
-                throw_error("SyntaxError", "Expected value in expression");
-            }
+            int rhs_type = VAR_INT;
+            int rhs_val = evaluate_operand(cursor, &rhs_str, &rhs_type);
 
             if (op.type == TOKEN_PLUS) {
                 if (*out_str != NULL && rhs_str != NULL) {
@@ -425,34 +962,32 @@ int evaluate_expression(const char **cursor, char **out_str, int *out_type) {
                 }
             } else if (op.type == TOKEN_MINUS) {
                 if (rhs_str || (*out_type != VAR_INT && *out_type != VAR_BOOL)) {
-                    throw_error("InvalidOperandError", "Invalid operands for operator '-'");
+                    throw_error("InvalidOperandError", "Invalid operands for operator '-' on line %d", current_executing_line);
                 }
                 acc -= rhs_val;
                 *out_type = VAR_INT;
-            }
-            else if (op.type == TOKEN_STAR) {
+            } else if (op.type == TOKEN_STAR) {
                 if (rhs_str || (*out_type != VAR_INT && *out_type != VAR_BOOL)) {
-                    throw_error("InvalidOperandError", "Invalid operands for operator '*'");
+                    throw_error("InvalidOperandError", "Invalid operands for operator '*' on line %d", current_executing_line);
                 }
                 acc *= rhs_val;
                 *out_type = VAR_INT;
-            }
-            else if (op.type == TOKEN_SLASH) {
+            } else if (op.type == TOKEN_SLASH) {
                 if (rhs_str || (*out_type != VAR_INT && *out_type != VAR_BOOL)) {
-                    throw_error("InvalidOperandError", "Invalid operands for operator '/'");
+                    throw_error("InvalidOperandError", "Invalid operands for operator '/' on line %d", current_executing_line);
                 }
                 if (rhs_val != 0) {
                     acc /= rhs_val;
                     *out_type = VAR_INT;
                 } else {
-                    throw_error("DivisionByZeroError", "Division by zero");
+                    throw_error("DivisionByZeroError", "Division by zero on line %d", current_executing_line);
                 }
             }
             if (rhs_str) { untrack_alloc(rhs_str); free(rhs_str); }
-            freeToken(&rhs);
         }
         else if (op.type == TOKEN_EQUAL || op.type == TOKEN_GREATER || op.type == TOKEN_LESS ||
                  op.type == TOKEN_GREATER_EQUAL || op.type == TOKEN_LESS_EQUAL || op.type == TOKEN_NOT_EQUAL) {
+            TokenType cmp_type = op.type;
             freeToken(&op);
             Token op_consumed = getNextToken(cursor);
             freeToken(&op_consumed);
@@ -464,30 +999,30 @@ int evaluate_expression(const char **cursor, char **out_str, int *out_type) {
             int cmp_res = 0;
             if (*out_str != NULL && rhs_str != NULL) {
                 int cmp = strcmp(*out_str, rhs_str);
-                if (op.type == TOKEN_EQUAL) cmp_res = (cmp == 0);
-                else if (op.type == TOKEN_NOT_EQUAL) cmp_res = (cmp != 0);
-                else if (op.type == TOKEN_GREATER) cmp_res = (cmp > 0);
-                else if (op.type == TOKEN_LESS) cmp_res = (cmp < 0);
-                else if (op.type == TOKEN_GREATER_EQUAL) cmp_res = (cmp >= 0);
-                else if (op.type == TOKEN_LESS_EQUAL) cmp_res = (cmp <= 0);
+                if (cmp_type == TOKEN_EQUAL) cmp_res = (cmp == 0);
+                else if (cmp_type == TOKEN_NOT_EQUAL) cmp_res = (cmp != 0);
+                else if (cmp_type == TOKEN_GREATER) cmp_res = (cmp > 0);
+                else if (cmp_type == TOKEN_LESS) cmp_res = (cmp < 0);
+                else if (cmp_type == TOKEN_GREATER_EQUAL) cmp_res = (cmp >= 0);
+                else if (cmp_type == TOKEN_LESS_EQUAL) cmp_res = (cmp <= 0);
             } else if (*out_str == NULL && rhs_str == NULL) {
-                if (op.type == TOKEN_EQUAL) cmp_res = (acc == rhs_val);
-                else if (op.type == TOKEN_NOT_EQUAL) cmp_res = (acc != rhs_val);
-                else if (op.type == TOKEN_GREATER) cmp_res = (acc > rhs_val);
-                else if (op.type == TOKEN_LESS) cmp_res = (acc < rhs_val);
-                else if (op.type == TOKEN_GREATER_EQUAL) cmp_res = (acc >= rhs_val);
-                else if (op.type == TOKEN_LESS_EQUAL) cmp_res = (acc <= rhs_val);
+                if (cmp_type == TOKEN_EQUAL) cmp_res = (acc == rhs_val);
+                else if (cmp_type == TOKEN_NOT_EQUAL) cmp_res = (acc != rhs_val);
+                else if (cmp_type == TOKEN_GREATER) cmp_res = (acc > rhs_val);
+                else if (cmp_type == TOKEN_LESS) cmp_res = (acc < rhs_val);
+                else if (cmp_type == TOKEN_GREATER_EQUAL) cmp_res = (acc >= rhs_val);
+                else if (cmp_type == TOKEN_LESS_EQUAL) cmp_res = (acc <= rhs_val);
             } else {
-                if (op.type == TOKEN_EQUAL) cmp_res = 0;
-                else if (op.type == TOKEN_NOT_EQUAL) cmp_res = 1;
+                if (cmp_type == TOKEN_EQUAL) cmp_res = 0;
+                else if (cmp_type == TOKEN_NOT_EQUAL) cmp_res = 1;
                 else {
-                    throw_error("InvalidOperandError", "Invalid comparison between string and non-string");
+                    throw_error("InvalidOperandError", "Invalid comparison between string and non-string on line %d", current_executing_line);
                 }
             }
 
             if (*out_str) {
                 untrack_alloc(*out_str);
-                    free(*out_str);
+                free(*out_str);
                 *out_str = NULL;
             }
             if (rhs_str) {
@@ -497,14 +1032,97 @@ int evaluate_expression(const char **cursor, char **out_str, int *out_type) {
 
             acc = cmp_res;
             *out_type = VAR_BOOL;
-        }
-        else {
+        } else {
             freeToken(&op);
             break;
         }
     }
 
     return acc;
+}
+
+void parse_and_register_routine(const char *def_line, int body_start, int body_end, int line_num) {
+    const char *cursor = def_line;
+    Token t = getNextToken(&cursor); // "def"
+    freeToken(&t);
+
+    int purity_specified = 0;
+    PurityKind purity = PURITY_INBOUND;
+    RoutineKind kind = ROUTINE_FUNC;
+
+    Token tok = getNextToken(&cursor);
+    if (tok.type == TOKEN_INBOUND) {
+        purity_specified = 1;
+        purity = PURITY_INBOUND;
+        freeToken(&tok);
+        tok = getNextToken(&cursor);
+    } else if (tok.type == TOKEN_OUTBOUND) {
+        purity_specified = 1;
+        purity = PURITY_OUTBOUND;
+        freeToken(&tok);
+        tok = getNextToken(&cursor);
+    }
+
+    if (tok.type == TOKEN_FUNC) {
+        kind = ROUTINE_FUNC;
+        if (!purity_specified) purity = PURITY_INBOUND;
+    } else if (tok.type == TOKEN_METHOD) {
+        kind = ROUTINE_METHOD;
+        if (!purity_specified) purity = PURITY_OUTBOUND;
+    } else {
+        freeToken(&tok);
+        throw_error("SyntaxError", "Expected 'func' or 'method' in routine definition on line %d", line_num);
+    }
+    freeToken(&tok);
+
+    Token name_tok = getNextToken(&cursor);
+    if (name_tok.type != TOKEN_IDENTIFIER) {
+        freeToken(&name_tok);
+        throw_error("SyntaxError", "Expected routine name in definition on line %d", line_num);
+    }
+
+    char rname[64];
+    strncpy(rname, name_tok.value, sizeof(rname) - 1);
+    rname[sizeof(rname) - 1] = '\0';
+    freeToken(&name_tok);
+
+    Routine *r = NULL;
+    for (int i = 0; i < routine_count; i++) {
+        if (strcmp(routines[i].name, rname) == 0) {
+            r = &routines[i];
+            break;
+        }
+    }
+    if (!r) {
+        if (routine_count >= MAX_ROUTINES) {
+            throw_error("SystemError", "Maximum routine count exceeded on line %d", line_num);
+        }
+        r = &routines[routine_count++];
+    }
+
+    strncpy(r->name, rname, sizeof(r->name) - 1);
+    r->name[sizeof(r->name) - 1] = '\0';
+    r->kind = kind;
+    r->purity = purity;
+    r->body_start_line = body_start;
+    r->body_end_line = body_end;
+    r->param_count = 0;
+
+    while (1) {
+        Token param_tok = getNextToken(&cursor);
+        if (param_tok.type == TOKEN_EOF) {
+            freeToken(&param_tok);
+            break;
+        }
+        if (param_tok.type == TOKEN_IDENTIFIER) {
+            if (r->param_count < 16) {
+                strncpy(r->params[r->param_count], param_tok.value, sizeof(r->params[0]) - 1);
+                r->params[r->param_count][sizeof(r->params[0]) - 1] = '\0';
+                r->param_count++;
+            }
+        }
+        freeToken(&param_tok);
+    }
 }
 
 void parse_lines(const char *buffer) {
@@ -521,7 +1139,11 @@ void parse_lines(const char *buffer) {
         memcpy(raw_line, p, raw_len);
         raw_line[raw_len] = '\0';
 
-        char clean_line[1024] = "";
+        char *clean_line = calloc(1, raw_len + 1);
+        if (!clean_line) {
+            free(raw_line);
+            throw_error("MemoryAllocationError", "Memory allocation failed");
+        }
         int clean_pos = 0;
         char *src_ptr = raw_line;
         int in_string = 0;
@@ -567,6 +1189,7 @@ void parse_lines(const char *buffer) {
         }
 
         char *code = strdup(src);
+        free(clean_line);
         int len = strlen(code);
         while (len > 0 && isspace((unsigned char)code[len - 1])) {
             code[len - 1] = '\0';
@@ -598,30 +1221,61 @@ void parse_lines(const char *buffer) {
 }
 
 void execute_line(const char *text, int line_num) {
-    const char *cursor = text;
+    char resolved_buf[2048];
+    const char *resolved_text = resolve_alias_line(text, resolved_buf, sizeof(resolved_buf));
+    const char *cursor = resolved_text;
     Token t;
     while ((t = getNextToken(&cursor)).type != TOKEN_EOF) {
-        if (t.type == TOKEN_DISPLAY) {
+        if (t.type == TOKEN_ALIAS) {
+            parse_and_register_alias(resolved_text);
+            while (t.type != TOKEN_EOF) {
+                freeToken(&t);
+                t = getNextToken(&cursor);
+            }
+            continue;
+        }
+        else if (t.type == TOKEN_DISPLAY) {
+            char col[64] = "";
+            get_attribute_str(resolved_text, "color", col, sizeof(col));
+            int newline = 1;
+            char nl[32] = "";
+            if (get_attribute_str(resolved_text, "newline", nl, sizeof(nl))) {
+                if (strcmp(nl, "false") == 0 || strcmp(nl, "0") == 0) newline = 0;
+            }
+            if (strstr(resolved_text, "?inline") != NULL) newline = 0;
+
+            if (col[0] != '\0') {
+                apply_color(col);
+            }
+
             char *out_str = NULL;
             int out_type = VAR_INT;
             int val = evaluate_expression(&cursor, &out_str, &out_type);
             if (out_str) {
-                printf("%s\n", out_str);
+                printf("%s", out_str);
                 untrack_alloc(out_str);
                 free(out_str);
             } else if (out_type == VAR_BOOL) {
-                printf("%s\n", val ? "true" : "false");
+                printf("%s", val ? "true" : "false");
             } else {
-                printf("%d\n", val);
+                printf("%d", val);
             }
+            if (col[0] != '\0') printf("\033[0m");
+            if (newline) printf("\n");
         }
         else if (t.type == TOKEN_PROMPT) {
             Token var_tok = getNextToken(&cursor);
             if (var_tok.type == TOKEN_IDENTIFIER) {
                 Variable *v = set_var(var_tok.value);
+                char def_val[128] = "";
+                get_attribute_str(resolved_text, "default", def_val, sizeof(def_val));
                 char input[256];
                 if (fgets(input, sizeof(input), stdin)) {
                     input[strcspn(input, "\r\n")] = 0;
+                    if (input[0] == '\0' && def_val[0] != '\0') {
+                        strncpy(input, def_val, sizeof(input) - 1);
+                        input[sizeof(input) - 1] = '\0';
+                    }
                     char *endptr;
                     long lval = strtol(input, &endptr, 10);
                     if (*endptr == '\0' && input[0] != '\0') {
@@ -652,7 +1306,13 @@ void execute_line(const char *text, int line_num) {
                         throw_error(current_error_name, "%s", current_error_msg);
                     }
                 } else if (is_error_name(err_tok.value)) {
-                    throw_error(err_tok.value, "User thrown error");
+                    char custom_msg[256] = "";
+                    get_attribute_str(resolved_text, "msg", custom_msg, sizeof(custom_msg));
+                    if (custom_msg[0] != '\0') {
+                        throw_error(err_tok.value, "%s", custom_msg);
+                    } else {
+                        throw_error(err_tok.value, "User thrown error");
+                    }
                 } else {
                     throw_error("SyntaxError", "Invalid error: %s error on line %d", err_tok.value, line_num);
                 }
@@ -671,6 +1331,81 @@ void execute_line(const char *text, int line_num) {
             }
             continue;
         }
+        else if (t.type == TOKEN_SET) {
+            Token var_tok = getNextToken(&cursor);
+            if (var_tok.type != TOKEN_IDENTIFIER) {
+                freeToken(&var_tok);
+                throw_error("SyntaxError", "Expected variable name after 'set' on line %d", line_num);
+            }
+            Token colon = getNextToken(&cursor);
+            if (colon.type != TOKEN_COLON) {
+                freeToken(&colon);
+                freeToken(&var_tok);
+                throw_error("SyntaxError", "Expected ':' after variable name in 'set' on line %d", line_num);
+            }
+            freeToken(&colon);
+            char *out_str = NULL;
+            int out_type = VAR_INT;
+            int val = evaluate_expression(&cursor, &out_str, &out_type);
+            Variable *v = set_var_scoped(var_tok.value, line_num);
+            if (out_str) {
+                v->type = VAR_STRING;
+                if (v->string_val) free(v->string_val);
+                untrack_alloc(out_str);
+                v->string_val = out_str;
+            } else if (out_type == VAR_BOOL) {
+                v->type = VAR_BOOL;
+                v->int_val = val;
+                if (v->string_val) {
+                    free(v->string_val);
+                    v->string_val = NULL;
+                }
+            } else {
+                v->type = VAR_INT;
+                v->int_val = val;
+                if (v->string_val) {
+                    free(v->string_val);
+                    v->string_val = NULL;
+                }
+            }
+            freeToken(&var_tok);
+        }
+        else if (t.type == TOKEN_REPLY) {
+            if (call_stack_ptr == 0) {
+                throw_error("SyntaxError", "'reply' statement outside of routine on line %d", line_num);
+            }
+            Routine *cur_routine = call_stack[call_stack_ptr - 1].routine;
+            Token peek = peekToken(&cursor);
+            if (peek.type != TOKEN_EOF) {
+                freeToken(&peek);
+                if (cur_routine->kind == ROUTINE_METHOD) {
+                    throw_error("SyntaxError", "Methods cannot return values with reply on line %d", line_num);
+                }
+                char *out_str = NULL;
+                int out_type = VAR_INT;
+                int val = evaluate_expression(&cursor, &out_str, &out_type);
+                current_reply.has_replied = 1;
+                current_reply.type = out_type;
+                current_reply.int_val = val;
+                if (current_reply.string_val) {
+                    free(current_reply.string_val);
+                    current_reply.string_val = NULL;
+                }
+                if (out_str) {
+                    untrack_alloc(out_str);
+                    current_reply.string_val = out_str;
+                }
+            } else {
+                freeToken(&peek);
+                current_reply.has_replied = 1;
+                current_reply.type = VAR_INT;
+                current_reply.int_val = 0;
+                if (current_reply.string_val) {
+                    free(current_reply.string_val);
+                    current_reply.string_val = NULL;
+                }
+            }
+        }
         else if (t.type == TOKEN_IDENTIFIER) {
             Token next = peekToken(&cursor);
             if (next.type == TOKEN_COLON) {
@@ -680,7 +1415,7 @@ void execute_line(const char *text, int line_num) {
                 char *out_str = NULL;
                 int out_type = VAR_INT;
                 int val = evaluate_expression(&cursor, &out_str, &out_type);
-                Variable *v = set_var(t.value);
+                Variable *v = set_var_scoped(t.value, line_num);
                 if (out_str) {
                     v->type = VAR_STRING;
                     if (v->string_val) free(v->string_val);
@@ -703,7 +1438,12 @@ void execute_line(const char *text, int line_num) {
                 }
             } else {
                 freeToken(&next);
-                throw_error("SyntaxError", "Unexpected identifier '%s' on line %d", t.value, line_num);
+                Routine *r = find_routine(t.value);
+                if (r) {
+                    call_routine(r, &cursor, line_num);
+                } else {
+                    throw_error("SyntaxError", "Unexpected identifier '%s' on line %d", t.value, line_num);
+                }
             }
         }
         else if (t.type == TOKEN_QUESTION) {
@@ -734,8 +1474,12 @@ void execute_block(int start, int end) {
         if (active_watch.active && active_watch.triggered) {
             break;
         }
+        if (current_reply.has_replied) {
+            break;
+        }
 
         Line *line = &lines[i];
+        current_executing_line = line->line_num;
         if (line->text[0] == '\0' || line->text[0] == '!') {
             i++;
             continue;
@@ -750,9 +1494,56 @@ void execute_block(int start, int end) {
         jmp_buf prev_suppress_env;
         memcpy(prev_suppress_env, suppress_jmp_env, sizeof(jmp_buf));
 
+        char resolved_line_buf[2048];
+        const char *effective_text = resolve_alias_line(line->text, resolved_line_buf, sizeof(resolved_line_buf));
+
         suppress_jmp_active = 1;
         if (setjmp(suppress_jmp_env) == 0) {
-            if (strncmp(line->text, "loop ", 5) == 0 || strcmp(line->text, "loop") == 0) {
+            if (strncmp(effective_text, "def ", 4) == 0) {
+                int block_start = i + 1;
+                int block_end = i;
+                while (block_end + 1 <= end) {
+                    Line *next = &lines[block_end + 1];
+                    if (next->text[0] == '\0' || next->text[0] == '!') {
+                        block_end++;
+                        continue;
+                    }
+                    if (next->indent > line->indent) {
+                        block_end++;
+                    } else {
+                        break;
+                    }
+                }
+                parse_and_register_routine(effective_text, block_start, block_end, line->line_num);
+                i = block_end + 1;
+            }
+            else if (strncmp(line->text, "alias:", 6) == 0 || strcmp(line->text, "alias:") == 0 || strcmp(line->text, "alias") == 0) {
+                int block_start = i + 1;
+                int block_end = i;
+                while (block_end + 1 <= end) {
+                    Line *next = &lines[block_end + 1];
+                    if (next->text[0] == '\0' || next->text[0] == '!') {
+                        block_end++;
+                        continue;
+                    }
+                    if (next->indent > line->indent) {
+                        block_end++;
+                    } else {
+                        break;
+                    }
+                }
+                for (int k = block_start; k <= block_end; k++) {
+                    if (lines[k].text[0] != '\0' && lines[k].text[0] != '!') {
+                        parse_and_register_alias(lines[k].text);
+                    }
+                }
+                i = block_end + 1;
+            }
+            else if (strncmp(line->text, "alias ", 6) == 0) {
+                parse_and_register_alias(line->text);
+                i++;
+            }
+            else if (strncmp(effective_text, "loop ", 5) == 0 || strcmp(effective_text, "loop") == 0) {
             int block_start = i + 1;
             int block_end = i;
             while (block_end + 1 <= end) {
@@ -768,7 +1559,7 @@ void execute_block(int start, int end) {
                 }
             }
 
-            const char *cursor = line->text + 4;
+            const char *cursor = effective_text + 4;
             char *out_str = NULL;
             int out_type = VAR_INT;
             int iters = evaluate_expression(&cursor, &out_str, &out_type);
@@ -804,12 +1595,14 @@ void execute_block(int start, int end) {
             }
 
             for (int k = 0; k < iters; k += step_val) {
+                if (current_reply.has_replied) break;
                 execute_block(block_start, block_end);
+                if (current_reply.has_replied) break;
                 if (active_watch.active && active_watch.triggered) break;
             }
             i = block_end + 1;
         }
-        else if (strncmp(line->text, "iterate ", 8) == 0) {
+            else if (strncmp(effective_text, "iterate ", 8) == 0) {
             int block_start = i + 1;
             int block_end = i;
             while (block_end + 1 <= end) {
@@ -825,13 +1618,16 @@ void execute_block(int start, int end) {
                 }
             }
 
-            const char *cursor = line->text + 8;
+            const char *cursor = effective_text + 8;
             while (isspace((unsigned char)*cursor)) cursor++;
             const char *id_start = cursor;
             while (isalnum((unsigned char)*cursor) || *cursor == '_') cursor++;
             int id_len = cursor - id_start;
             if (id_len == 0) {
                 throw_error("SyntaxError", "Expected identifier after iterate on line %d", line->line_num);
+            }
+            if (id_len >= 64) {
+                id_len = 63;
             }
             char var_name[64];
             strncpy(var_name, id_start, id_len);
@@ -849,35 +1645,28 @@ void execute_block(int start, int end) {
                     free(out_str);
                 }
                 if (out_type == VAR_STRING) {
-                    throw_error("LoopLimitError", "Loop start index must be numeric on line %d", line->line_num);
+                    throw_error("LoopIterationError", "Iterate start must be numeric on line %d", line->line_num);
                 }
             } else {
-                Variable *v = get_var(var_name);
-                if (v) {
-                    if (v->type != VAR_INT && v->type != VAR_BOOL) {
-                        throw_error("LoopLimitError", "Existing loop variable '%s' is not numeric on line %d", var_name, line->line_num);
-                    }
-                    start_val = v->int_val;
-                } else {
-                    start_val = 0;
-                }
+                throw_error("SyntaxError", "Expected 'from' after identifier in iterate on line %d", line->line_num);
             }
 
             while (isspace((unsigned char)*cursor)) cursor++;
-            if (strncmp(cursor, "to", 2) != 0 || !isspace((unsigned char)cursor[2])) {
-                throw_error("SyntaxError", "Expected 'to' in iterate loop on line %d", line->line_num);
-            }
-            cursor += 2;
-
-            char *out_str = NULL;
-            int out_type = VAR_INT;
-            int end_val = evaluate_expression(&cursor, &out_str, &out_type);
-            if (out_str) {
-                untrack_alloc(out_str);
-                free(out_str);
-            }
-            if (out_type == VAR_STRING) {
-                throw_error("LoopLimitError", "Loop end index must be numeric on line %d", line->line_num);
+            int end_val = 0;
+            if (strncmp(cursor, "to", 2) == 0 && isspace((unsigned char)cursor[2])) {
+                cursor += 2;
+                char *out_str = NULL;
+                int out_type = VAR_INT;
+                end_val = evaluate_expression(&cursor, &out_str, &out_type);
+                if (out_str) {
+                    untrack_alloc(out_str);
+                    free(out_str);
+                }
+                if (out_type == VAR_STRING) {
+                    throw_error("LoopIterationError", "Iterate end must be numeric on line %d", line->line_num);
+                }
+            } else {
+                throw_error("SyntaxError", "Expected 'to' after from-value in iterate on line %d", line->line_num);
             }
 
             int step_val = 1;
@@ -909,6 +1698,7 @@ void execute_block(int start, int end) {
 
             Variable *v = set_var(var_name);
             for (int idx_val = start_val; idx_val <= end_val; idx_val += step_val) {
+                if (current_reply.has_replied) break;
                 v->type = VAR_INT;
                 v->int_val = idx_val;
                 if (v->string_val) {
@@ -916,12 +1706,13 @@ void execute_block(int start, int end) {
                     v->string_val = NULL;
                 }
                 execute_block(block_start, block_end);
+                if (current_reply.has_replied) break;
                 if (active_watch.active && active_watch.triggered) break;
             }
             i = block_end + 1;
         }
-        else if (strncmp(line->text, "if ", 3) == 0) {
-            const char *cursor = line->text + 3;
+        else if (strncmp(effective_text, "if ", 3) == 0) {
+            const char *cursor = effective_text + 3;
             const char *then_ptr = strstr(cursor, " then");
             if (!then_ptr) {
                 throw_error("SyntaxError", "Expected 'then' after if condition on line %d", line->line_num);
@@ -976,7 +1767,10 @@ void execute_block(int start, int end) {
                     break;
                 }
 
-                if (strncmp(lookahead->text, "else if ", 8) == 0) {
+                char resolved_lookahead_buf[2048];
+                const char *eff_lookahead = resolve_alias_line(lookahead->text, resolved_lookahead_buf, sizeof(resolved_lookahead_buf));
+
+                if (strncmp(eff_lookahead, "else if ", 8) == 0) {
                     int elif_start = current_idx + 1;
                     int elif_end = current_idx;
                     while (elif_end + 1 <= end) {
@@ -993,7 +1787,7 @@ void execute_block(int start, int end) {
                     }
 
                     if (!executed) {
-                        const char *elif_cursor = lookahead->text + 8;
+                        const char *elif_cursor = eff_lookahead + 8;
                         const char *elif_then_ptr = strstr(elif_cursor, " then");
                         if (!elif_then_ptr) {
                             throw_error("SyntaxError", "Expected 'then' after else if condition on line %d", lookahead->line_num);
@@ -1023,7 +1817,7 @@ void execute_block(int start, int end) {
                     }
                     current_idx = elif_end + 1;
                 }
-                else if (strncmp(lookahead->text, "else ", 5) == 0 || strcmp(lookahead->text, "else") == 0) {
+                else if (strncmp(eff_lookahead, "else ", 5) == 0 || strcmp(eff_lookahead, "else") == 0) {
                     int else_start = current_idx + 1;
                     int else_end = current_idx;
                     while (else_end + 1 <= end) {
@@ -1055,7 +1849,7 @@ void execute_block(int start, int end) {
             }
             i = current_idx;
         }
-        else if (strncmp(line->text, "while ", 6) == 0) {
+        else if (strncmp(effective_text, "while ", 6) == 0) {
             int block_start = i + 1;
             int block_end = i;
             while (block_end + 1 <= end) {
@@ -1072,7 +1866,7 @@ void execute_block(int start, int end) {
             }
 
             int step_val = 1;
-            const char *cursor = line->text + 6;
+            const char *cursor = effective_text + 6;
             const char *step_ptr = strstr(cursor, " step");
             if (step_ptr) {
                 if (isspace(*(step_ptr - 1)) && (isspace(*(step_ptr + 5)) || *(step_ptr + 5) == '\0')) {
@@ -1114,6 +1908,7 @@ void execute_block(int start, int end) {
 
                 if (iter_count % step_val == 0) {
                     execute_block(block_start, block_end);
+                    if (current_reply.has_replied) break;
                 }
                 iter_count++;
                 if (active_watch.active && active_watch.triggered) break;
@@ -1125,7 +1920,7 @@ void execute_block(int start, int end) {
             }
             i = block_end + 1;
         }
-        else if (strncmp(line->text, "until ", 6) == 0) {
+        else if (strncmp(effective_text, "until ", 6) == 0) {
             int block_start = i + 1;
             int block_end = i;
             while (block_end + 1 <= end) {
@@ -1142,7 +1937,7 @@ void execute_block(int start, int end) {
             }
 
             int step_val = 1;
-            const char *cursor = line->text + 6;
+            const char *cursor = effective_text + 6;
             const char *step_ptr = strstr(cursor, " step");
             if (step_ptr) {
                 if (isspace(*(step_ptr - 1)) && (isspace(*(step_ptr + 5)) || *(step_ptr + 5) == '\0')) {
@@ -1184,6 +1979,7 @@ void execute_block(int start, int end) {
 
                 if (iter_count % step_val == 0) {
                     execute_block(block_start, block_end);
+                    if (current_reply.has_replied) break;
                 }
                 iter_count++;
                 if (active_watch.active && active_watch.triggered) break;
@@ -1195,7 +1991,7 @@ void execute_block(int start, int end) {
             }
             i = block_end + 1;
         }
-        else if (strcmp(line->text, "do") == 0) {
+        else if (strcmp(effective_text, "do") == 0) {
             int do_start = i + 1;
             int do_end = i;
             while (do_end + 1 <= end) {
@@ -1265,11 +2061,18 @@ void execute_block(int start, int end) {
                     throw_error("SystemError", "Jump stack overflow on line %d", line->line_num);
                 }
 
+                int saved_scope = current_scope_depth;
+                int saved_call_ptr = call_stack_ptr;
+
                 if (setjmp(jmp_env_stack[jmp_stack_ptr++]) == 0) {
                     execute_block(do_start, do_end);
                     jmp_stack_ptr--;
                 } else {
                     jmp_stack_ptr--;
+                    pop_scope(saved_scope);
+                    current_scope_depth = saved_scope;
+                    call_stack_ptr = saved_call_ptr;
+
                     int catch_all = (strcmp(unless_expr, "error") == 0);
                     int catch_spec = (strcmp(unless_expr, current_error_name) == 0);
                     if (catch_all || catch_spec) {
@@ -1339,7 +2142,7 @@ void execute_block(int start, int end) {
 
             i = unless_end + 1;
         }
-        else if (strcmp(line->text, "ForceErrors") == 0) {
+        else if (strcmp(effective_text, "ForceErrors") == 0) {
             int block_start = i + 1;
             int block_end = i;
             while (block_end + 1 <= end) {
@@ -1360,7 +2163,7 @@ void execute_block(int start, int end) {
             error_mode = prev_mode;
             i = block_end + 1;
         }
-        else if (strcmp(line->text, "CriticalErrors") == 0) {
+        else if (strcmp(effective_text, "CriticalErrors") == 0) {
             int block_start = i + 1;
             int block_end = i;
             while (block_end + 1 <= end) {
@@ -1381,8 +2184,8 @@ void execute_block(int start, int end) {
             error_mode = prev_mode;
             i = block_end + 1;
         }
-        else if (strncmp(line->text, "inject", 6) == 0 && (line->text[6] == ' ' || line->text[6] == '\0')) {
-            const char *lang_ptr = line->text + 6;
+        else if (strncmp(effective_text, "inject", 6) == 0 && (effective_text[6] == ' ' || effective_text[6] == '\0')) {
+            const char *lang_ptr = effective_text + 6;
             while (*lang_ptr == ' ') lang_ptr++;
             char lang[64] = "verscript";
             if (*lang_ptr != '\0') {
@@ -1417,7 +2220,7 @@ void execute_block(int start, int end) {
                 for (int s = 0; s < spaces_to_keep && pos < 4090; s++) injected_code[pos++] = ' ';
                 int line_len = strlen(lines[k].text);
                 if (pos + line_len + 1 < 4090) {
-                    strcpy(injected_code + pos, lines[k].text);
+                    memmove(injected_code + pos, lines[k].text, line_len + 1);
                     pos += line_len;
                     injected_code[pos++] = '\n';
                 }
@@ -1425,10 +2228,18 @@ void execute_block(int start, int end) {
             injected_code[pos] = '\0';
 
             if (strcmp(lang, "verscript") == 0 || strcmp(lang, "vrs") == 0 || strcmp(lang, "eval") == 0) {
+                int prev_line_count = line_count;
                 parse_lines(injected_code);
+                if (line_count > prev_line_count) {
+                    execute_block(prev_line_count, line_count - 1);
+                    for (int idx = prev_line_count; idx < line_count; idx++) {
+                        if (lines[idx].text) free(lines[idx].text);
+                    }
+                    line_count = prev_line_count;
+                }
             } else {
                 char col[32] = "";
-                get_attribute_str(line->text, "color", col, sizeof(col));
+                get_attribute_str(effective_text, "color", col, sizeof(col));
                 if (col[0] != '\0') {
                     if (strcmp(col, "green") == 0) printf("\033[32m");
                     else if (strcmp(col, "red") == 0) printf("\033[31m");
@@ -1447,7 +2258,7 @@ void execute_block(int start, int end) {
 
             i = block_end + 1;
         }
-        else if (strcmp(line->text, "SuppressErrors") == 0) {
+        else if (strcmp(effective_text, "SuppressErrors") == 0) {
             int block_start = i + 1;
             int block_end = i;
             while (block_end + 1 <= end) {
@@ -1469,7 +2280,10 @@ void execute_block(int start, int end) {
             i = block_end + 1;
         }
         else {
-            execute_line(line->text, line->line_num);
+            execute_line(effective_text, line->line_num);
+            if (current_reply.has_replied) {
+                break;
+            }
             if (active_watch.active) {
                 const char *cursor = active_watch.expr;
                 char *out_str = NULL;
@@ -1490,15 +2304,16 @@ void execute_block(int start, int end) {
     } else {
         // Suppressed error occurred. Skip statement or block.
         int block_end = i;
-        if (strncmp(line->text, "loop ", 5) == 0 || strcmp(line->text, "loop") == 0 ||
-            strncmp(line->text, "iterate ", 8) == 0 ||
-            strncmp(line->text, "if ", 3) == 0 ||
-            strncmp(line->text, "while ", 6) == 0 ||
-            strncmp(line->text, "until ", 6) == 0 ||
-            strcmp(line->text, "do") == 0 ||
-            strcmp(line->text, "ForceErrors") == 0 ||
-            strcmp(line->text, "CriticalErrors") == 0 ||
-            strcmp(line->text, "SuppressErrors") == 0) {
+        if (strncmp(effective_text, "def ", 4) == 0 ||
+            strncmp(effective_text, "loop ", 5) == 0 || strcmp(effective_text, "loop") == 0 ||
+            strncmp(effective_text, "iterate ", 8) == 0 ||
+            strncmp(effective_text, "if ", 3) == 0 ||
+            strncmp(effective_text, "while ", 6) == 0 ||
+            strncmp(effective_text, "until ", 6) == 0 ||
+            strcmp(effective_text, "do") == 0 ||
+            strcmp(effective_text, "ForceErrors") == 0 ||
+            strcmp(effective_text, "CriticalErrors") == 0 ||
+            strcmp(effective_text, "SuppressErrors") == 0) {
 
             while (block_end + 1 <= end) {
                 Line *next = &lines[block_end + 1];

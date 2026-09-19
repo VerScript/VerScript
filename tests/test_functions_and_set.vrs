@@ -1,0 +1,95 @@
+! Test Suite for Custom Functions, Methods, Purity, and Set
+
+display "=== TEST 1: Explicit Set Keyword ==="
+set score: 100
+set message: "VerScript Functions"
+set is_active: true
+display score
+display message
+display is_active
+
+display "=== TEST 2: Basic Func and Reply ==="
+def func add x y
+    reply x + y
+
+sum: (add 15 25)
+display sum
+display (add 100 200)
+
+display "=== TEST 3: Func Pure Inbound Default (ScopeViolationError) ==="
+outer_val: 50
+def func try_mutate_outer delta
+    outer_val: outer_val + delta
+    reply outer_val
+
+do
+    val: (try_mutate_outer 10)
+    display "Should not reach here"
+unless ScopeViolationError
+    display "Caught expected ScopeViolationError: Inbound function cannot mutate outer scope"
+
+display outer_val
+
+display "=== TEST 4: Outbound Func Mutation ==="
+def outbound func mutate_outer delta
+    set outer_val: outer_val + delta
+    reply outer_val
+
+new_outer: (mutate_outer 25)
+display "New outer value:"
+display new_outer
+display outer_val
+
+display "=== TEST 5: Methods (Default Outbound) ==="
+counter: 0
+def method increment by
+    set counter: counter + by
+
+increment 5
+increment 10
+display "Counter after method calls:"
+display counter
+
+display "=== TEST 6: Method cannot reply with value ==="
+def method invalid_reply
+    reply 999
+
+do
+    invalid_reply
+unless SyntaxError
+    display "Caught expected SyntaxError: Methods cannot return values with reply"
+
+display "=== TEST 7: Early Exit Reply in Method ==="
+flag: 0
+def method test_early_exit cond
+    if cond == 1 then
+        set flag: 100
+        reply
+    set flag: 200
+
+test_early_exit 1
+display flag
+test_early_exit 0
+display flag
+
+display "=== TEST 8: Inbound Method ScopeViolationError ==="
+def inbound method pure_method val
+    set counter: val
+
+do
+    pure_method 999
+unless ScopeViolationError
+    display "Caught expected ScopeViolationError: Inbound method cannot mutate outer scope"
+
+display "=== TEST 9: Recursive Function ==="
+def func factorial n
+    if n <= 1 then
+        reply 1
+    sub: (factorial (n - 1))
+    reply n * sub
+
+fac5: (factorial 5)
+display "Factorial 5:"
+display fac5
+
+display "=== ALL FUNCTION TESTS PASSED CLEANLY ==="

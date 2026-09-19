@@ -1,0 +1,22 @@
+! VerScript test_alias.vrs - Alias Keyword & Remapping Showcase
+
+display "=== Single-line Command Alias ===" ?color="cyan"
+alias display: print
+print "Hello from single-line alias!" ?color="green"
+
+display "=== Alias with Attribute Mapping ===" ?color="purple"
+alias display: echo ? color=tint newline=inline
+echo "Hello with mapped attribute ?tint -> ?color" ?tint="cyan"
+echo "Segment 1, " ?tint="yellow" ?inline=true
+echo "Segment 2!" ?tint="green"
+
+display "=== Multi-line Alias Block ===" ?color="yellow"
+alias:
+    loop: repeat
+    iterate: for ? step=by
+
+repeat 3
+    print "Loop aliased as repeat" ?color="green"
+
+for i from 1 to 5 ?by=2
+    print "Iterate aliased as for: " + i ?color="purple"
