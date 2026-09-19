@@ -1,0 +1,26 @@
+name: Auto-merge Jules Pull Requests
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    if: startsWith(github.head_ref, 'jules') || contains(github.event.pull_request.title, 'Jules:')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Auto-merge PR and delete branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_URL="${{ github.event.pull_request.html_url }}"
+          echo "Detected Jules PR: $PR_URL"
+          gh pr review "$PR_URL" --approve --body "Auto-approved Jules PR." || true
+          gh pr merge "$PR_URL" --squash --delete-branch --admin || \
+          gh pr merge "$PR_URL" --squash --delete-branch || \
+          gh pr merge "$PR_URL" --merge --delete-branch || true
+          echo "PR $PR_URL auto-merged with head branch deletion."

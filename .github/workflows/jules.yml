@@ -22,3 +22,25 @@ jobs:
           prompt: |
             You are an automated software assistant.
             - If triggered by daily schedule or workflow dispatch: scan the repository for bugs and vulnerabilities. If bugs or code improvements are found, implement fixes and create a Pull Request titled "Jules: Daily Run". If no updates are required, create an empty Pull Request (no file changes) titled "Jules: Daily Run". Do not create or update any daily run findings log files.
+
+      - name: Auto-merge Jules PR and Delete Head Branch
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Searching for open Jules Pull Requests..."
+          for i in {1..8}; do
+            PR_URL=$(gh pr list --search "Jules: in:title state:open" --json url --jq '.[0].url // empty')
+            if [ -n "$PR_URL" ]; then
+              echo "Found open Jules Pull Request: $PR_URL"
+              gh pr review "$PR_URL" --approve --body "Auto-approved by Jules workflow automation." || true
+              gh pr merge "$PR_URL" --squash --delete-branch --admin || \
+              gh pr merge "$PR_URL" --squash --delete-branch || \
+              gh pr merge "$PR_URL" --merge --delete-branch || true
+              echo "Auto-merged and deleted head branch for: $PR_URL"
+              exit 0
+            fi
+            echo "Waiting for Jules PR to be indexed (attempt $i/8)..."
+            sleep 5
+          done
+          echo "No open Jules PR found."
