@@ -60,15 +60,15 @@ void apply_color(const char *col) {
     else if (strcmp(col, "cyan") == 0) printf("\033[36m");
     else if (strcmp(col, "white") == 0) printf("\033[37m");
     else if (col[0] == '#') {
-        int r = 0, g = 0, b = 0;
+        unsigned int r = 0, g = 0, b = 0;
         int len = strlen(col);
         if (len == 7) {
             if (sscanf(col + 1, "%02x%02x%02x", &r, &g, &b) == 3) {
-                printf("\033[38;2;%d;%d;%dm", r, g, b);
+                printf("\033[38;2;%u;%u;%um", r, g, b);
             }
         } else if (len == 4) {
             if (sscanf(col + 1, "%1x%1x%1x", &r, &g, &b) == 3) {
-                printf("\033[38;2;%d;%d;%dm", r * 17, g * 17, b * 17);
+                printf("\033[38;2;%u;%u;%um", r * 17, g * 17, b * 17);
             }
         }
     }
@@ -244,7 +244,7 @@ char* resolve_alias_line(const char *line_text, char *out_buf, size_t out_buf_si
 
     int tgt_len = strlen(a->target_cmd);
     if (pos + tgt_len < (int)out_buf_size - 1) {
-        strcpy(out_buf + pos, a->target_cmd);
+        memmove(out_buf + pos, a->target_cmd, tgt_len + 1);
         pos += tgt_len;
     }
 
@@ -274,7 +274,7 @@ char* resolve_alias_line(const char *line_text, char *out_buf, size_t out_buf_si
                 out_buf[pos++] = '?';
                 int m_len = strlen(mapped_to);
                 if (pos + m_len < (int)out_buf_size - 1) {
-                    strcpy(out_buf + pos, mapped_to);
+                    memmove(out_buf + pos, mapped_to, m_len + 1);
                     pos += m_len;
                 }
             } else {
@@ -371,6 +371,7 @@ void free_globals(void) {
         free(symtable);
         symtable = NULL;
     }
+    cleanup_lexer();
 }
 
 typedef struct {
@@ -391,7 +392,10 @@ int is_critical_error(const char *name) {
 
 void throw_error(const char *name, const char *fmt, ...) {
     if (name != current_error_name) {
-        memmove(current_error_name, name, strlen(name) + 1);
+        int len = strlen(name);
+        if (len > 127) len = 127;
+        memmove(current_error_name, name, len);
+        current_error_name[len] = '\0';
     }
 
     char temp_msg[256];
@@ -404,7 +408,7 @@ void throw_error(const char *name, const char *fmt, ...) {
 
     if (error_mode == ERR_MODE_FORCE) {
         free_all_tracked();
-        printf("ERROR: %s: %s\n", name, current_error_msg);
+        printf("ERROR: %s: %s\n", current_error_name, current_error_msg);
         free_globals();
         exit(1);
     }
@@ -428,7 +432,7 @@ void throw_error(const char *name, const char *fmt, ...) {
     if (jmp_stack_ptr > 0) {
         longjmp(jmp_env_stack[jmp_stack_ptr - 1], 1);
     } else {
-        printf("ERROR: %s: %s\n", name, current_error_msg);
+        printf("ERROR: %s: %s\n", current_error_name, current_error_msg);
         free_globals();
         exit(1);
     }
@@ -927,6 +931,7 @@ int evaluate_expression(const char **cursor, char **out_str, int *out_type) {
                     size_t len1 = strlen(*out_str);
                     size_t len2 = strlen(rhs_str);
                     char *new_str = malloc(len1 + len2 + 1);
+                    if (!new_str) throw_error("MemoryAllocationError", "Memory allocation failed");
                     track_alloc(new_str);
                     memcpy(new_str, *out_str, len1);
                     memcpy(new_str + len1, rhs_str, len2 + 1);
@@ -939,6 +944,7 @@ int evaluate_expression(const char **cursor, char **out_str, int *out_type) {
                     size_t len1 = strlen(*out_str);
                     size_t len2 = strlen(num_str);
                     char *new_str = malloc(len1 + len2 + 1);
+                    if (!new_str) throw_error("MemoryAllocationError", "Memory allocation failed");
                     track_alloc(new_str);
                     memcpy(new_str, *out_str, len1);
                     memcpy(new_str + len1, num_str, len2 + 1);
@@ -951,6 +957,7 @@ int evaluate_expression(const char **cursor, char **out_str, int *out_type) {
                     size_t len1 = strlen(num_str);
                     size_t len2 = strlen(rhs_str);
                     char *new_str = malloc(len1 + len2 + 1);
+                    if (!new_str) throw_error("MemoryAllocationError", "Memory allocation failed");
                     track_alloc(new_str);
                     memcpy(new_str, num_str, len1);
                     memcpy(new_str + len1, rhs_str, len2 + 1);
@@ -1136,6 +1143,9 @@ void parse_lines(const char *buffer) {
 
         int raw_len = eol - p;
         char *raw_line = malloc(raw_len + 1);
+        if (!raw_line) {
+            throw_error("MemoryAllocationError", "Memory allocation failed");
+        }
         memcpy(raw_line, p, raw_len);
         raw_line[raw_len] = '\0';
 
@@ -1294,7 +1304,7 @@ void execute_line(const char *text, int line_num) {
             } else {
                 throw_error("SyntaxError", "Expected variable name after prompt on line %d", line_num);
             }
-            if (var_tok.value) free(var_tok.value);
+            freeToken(&var_tok);
         }
         else if (t.type == TOKEN_THROW) {
             Token err_tok = getNextToken(&cursor);
@@ -1319,12 +1329,12 @@ void execute_line(const char *text, int line_num) {
             } else {
                 throw_error("SyntaxError", "Expected error name after throw on line %d", line_num);
             }
-            if (err_tok.value) free(err_tok.value);
+            freeToken(&err_tok);
         }
         else if (t.type == TOKEN_INJECT) {
             // Single-line inject token handler
             Token lang_tok = getNextToken(&cursor);
-            if (lang_tok.value) free(lang_tok.value);
+            freeToken(&lang_tok);
             while (t.type != TOKEN_EOF) {
                 freeToken(&t);
                 t = getNextToken(&cursor);
@@ -1719,6 +1729,7 @@ void execute_block(int start, int end) {
             }
             int cond_len = then_ptr - cursor;
             char *cond_str = malloc(cond_len + 1);
+            if (!cond_str) throw_error("MemoryAllocationError", "Memory allocation failed");
             track_alloc(cond_str);
             strncpy(cond_str, cursor, cond_len);
             cond_str[cond_len] = '\0';
@@ -1794,6 +1805,7 @@ void execute_block(int start, int end) {
                         }
                         int elif_cond_len = elif_then_ptr - elif_cursor;
                         char *elif_cond_str = malloc(elif_cond_len + 1);
+                        if (!elif_cond_str) throw_error("MemoryAllocationError", "Memory allocation failed");
                         track_alloc(elif_cond_str);
                         strncpy(elif_cond_str, elif_cursor, elif_cond_len);
                         elif_cond_str[elif_cond_len] = '\0';
@@ -1887,6 +1899,7 @@ void execute_block(int start, int end) {
 
             int cond_len = step_ptr ? (int)(step_ptr - cursor) : (int)strlen(cursor);
             char *cond_buf = malloc(cond_len + 1);
+            if (!cond_buf) throw_error("MemoryAllocationError", "Memory allocation failed");
             track_alloc(cond_buf);
             strncpy(cond_buf, cursor, cond_len);
             cond_buf[cond_len] = '\0';
@@ -1958,6 +1971,7 @@ void execute_block(int start, int end) {
 
             int cond_len = step_ptr ? (int)(step_ptr - cursor) : (int)strlen(cursor);
             char *cond_buf = malloc(cond_len + 1);
+            if (!cond_buf) throw_error("MemoryAllocationError", "Memory allocation failed");
             track_alloc(cond_buf);
             strncpy(cond_buf, cursor, cond_len);
             cond_buf[cond_len] = '\0';
@@ -2238,15 +2252,10 @@ void execute_block(int start, int end) {
                     line_count = prev_line_count;
                 }
             } else {
-                char col[32] = "";
+                char col[64] = "";
                 get_attribute_str(effective_text, "color", col, sizeof(col));
                 if (col[0] != '\0') {
-                    if (strcmp(col, "green") == 0) printf("\033[32m");
-                    else if (strcmp(col, "red") == 0) printf("\033[31m");
-                    else if (strcmp(col, "yellow") == 0) printf("\033[33m");
-                    else if (strcmp(col, "blue") == 0) printf("\033[34m");
-                    else if (strcmp(col, "purple") == 0) printf("\033[35m");
-                    else if (strcmp(col, "cyan") == 0) printf("\033[36m");
+                    apply_color(col);
                 }
                 int num_lines = 0;
                 for (int k = block_start; k <= block_end; k++) {
