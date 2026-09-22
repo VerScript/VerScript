@@ -185,6 +185,46 @@ Token getNextToken(const char **cursor) {
             token.type = TOKEN_SET;
             return token;
         }
+        if (len == 3 && strncmp(start, "arr", 3) == 0) {
+            token.type = TOKEN_ARR;
+            return token;
+        }
+        if (len == 5 && strncmp(start, "class", 5) == 0) {
+            token.type = TOKEN_CLASS;
+            return token;
+        }
+        if (len == 3 && strncmp(start, "lib", 3) == 0) {
+            token.type = TOKEN_LIB;
+            return token;
+        }
+        if (len == 7 && strncmp(start, "library", 7) == 0) {
+            token.type = TOKEN_LIB;
+            return token;
+        }
+        if (len == 6 && strncmp(start, "static", 6) == 0) {
+            token.type = TOKEN_STATIC;
+            return token;
+        }
+        if (len == 7 && strncmp(start, "dynamic", 7) == 0) {
+            token.type = TOKEN_DYNAMIC;
+            return token;
+        }
+        if (len == 5 && strncmp(start, "const", 5) == 0) {
+            token.type = TOKEN_CONST;
+            return token;
+        }
+        if (len == 6 && strncmp(start, "public", 6) == 0) {
+            token.type = TOKEN_PUBLIC;
+            return token;
+        }
+        if (len == 7 && strncmp(start, "private", 7) == 0) {
+            token.type = TOKEN_PRIVATE;
+            return token;
+        }
+        if (len == 8 && strncmp(start, "outscope", 8) == 0) {
+            token.type = TOKEN_OUTSCOPE;
+            return token;
+        }
 
         token.type = TOKEN_IDENTIFIER;
         token.value = malloc(len + 1);
@@ -226,6 +266,10 @@ Token getNextToken(const char **cursor) {
     if (**cursor == '?') { token.type = TOKEN_QUESTION; (*cursor)++; return token; }
     if (**cursor == '(') { token.type = TOKEN_LPAREN; (*cursor)++; return token; }
     if (**cursor == ')') { token.type = TOKEN_RPAREN; (*cursor)++; return token; }
+    if (**cursor == '[') { token.type = TOKEN_LBRACKET; (*cursor)++; return token; }
+    if (**cursor == ']') { token.type = TOKEN_RBRACKET; (*cursor)++; return token; }
+    if (**cursor == ',') { token.type = TOKEN_COMMA; (*cursor)++; return token; }
+    if (**cursor == '.') { token.type = TOKEN_DOT; (*cursor)++; return token; }
 
     // Strings
     if (**cursor == '"') {

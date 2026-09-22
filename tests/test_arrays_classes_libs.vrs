@@ -1,0 +1,124 @@
+! ==========================================
+! VerScript v2.1 Test Suite: Arrays, Classes, Entities, Libraries & Scoping
+! ==========================================
+
+global_counter: 100
+
+! ------------------------------------------
+! Test 1: Heterogeneous Arrays & Indexing
+! ------------------------------------------
+display "=== Test 1: Arrays & Indexing ===" ?color=#38bdf8
+arr items: [10, "Hello VerScript", true, 42]
+display items ?color=#22c55e
+
+display "Index 0:" ?inline ?color=#a855f7
+display items[0]
+display "Index 1:" ?inline ?color=#a855f7
+display items[1]
+
+items[0]: 99
+items[1]: "Updated String"
+display "After mutating items[0] and items[1]:" ?color=#38bdf8
+display items ?color=#22c55e
+
+do
+    display items[10]
+unless IndexOutOfBoundsError
+    display "Caught IndexOutOfBoundsError successfully!" ?color=#eab308
+
+! ------------------------------------------
+! Test 2: Classes & Entity Instantiation
+! ------------------------------------------
+display "=== Test 2: Classes & Entities ===" ?color=#38bdf8
+
+class Hero(hero_name, hero_hp)
+    static:
+        public faction: "Guardians"
+        secret_vault: 777
+    dynamic:
+        name: hero_name
+        hp: hero_hp
+        def method take_damage(amount)
+            outbound hp: hp - amount
+            outscope global_counter: global_counter + 5
+        def func get_status()
+            reply hp
+        def method test_non_procedural()
+            helper_call()
+        def method helper_call()
+            display "Non-procedural method call verified!" ?color=#22c55e
+        private def func internal_audit()
+            reply 42
+
+h: Hero("Valerius", 150)
+display "Hero instantiated with Faction:" ?inline ?color=#38bdf8
+display h.faction ?color=#22c55e
+display "Hero Name:" ?inline ?color=#38bdf8
+display h.name ?color=#22c55e
+display "Hero Initial HP:" ?inline ?color=#38bdf8
+display h.hp ?color=#22c55e
+
+h.take_damage(35)
+display "Hero HP after 35 damage:" ?inline ?color=#38bdf8
+display h.get_status() ?color=#22c55e
+display "Global counter after outscope write:" ?inline ?color=#38bdf8
+display global_counter ?color=#22c55e
+
+h.test_non_procedural()
+
+! ------------------------------------------
+! Test 3: Access Control & Visibility
+! ------------------------------------------
+display "=== Test 3: Access Control & Visibility ===" ?color=#38bdf8
+
+! Attempt to read private static member outside entity
+do
+    display h.secret_vault
+unless VisibilityError
+    display "Caught VisibilityError on private static member read!" ?color=#eab308
+
+! Attempt to call private method outside entity
+do
+    display h.internal_audit()
+unless VisibilityError
+    display "Caught VisibilityError on private method call!" ?color=#eab308
+
+! Attempt to mutate immutable static member
+do
+    h.faction: "Renegades"
+unless ImmutableError
+    display "Caught ImmutableError on static property mutation!" ?color=#eab308
+
+! ------------------------------------------
+! Test 4: Libraries (lib / library)
+! ------------------------------------------
+display "=== Test 4: Libraries & Unqualified Calls ===" ?color=#38bdf8
+
+lib MathToolkit
+    const:
+        golden_ratio: 1618
+    dynamic:
+        def func double_val(x)
+            reply x * 2
+        private def func hidden_formula(x)
+            reply x + 999
+
+display "Unqualified library constant access (golden_ratio):" ?inline ?color=#38bdf8
+display golden_ratio ?color=#22c55e
+
+display "Unqualified library function call (double_val(21)):" ?inline ?color=#38bdf8
+display double_val(21) ?color=#22c55e
+
+! Attempt to mutate library constant
+do
+    golden_ratio: 9999
+unless ImmutableError
+    display "Caught ImmutableError on library const mutation!" ?color=#eab308
+
+! Attempt to call private library routine
+do
+    display hidden_formula(5)
+unless VisibilityError
+    display "Caught VisibilityError on private library routine call!" ?color=#eab308
+
+display "=== All Arrays, Classes, Entities & Libraries Tests Passed! ===" ?color=#22c55e

@@ -7,15 +7,90 @@
 #include "../include/opcodes.h"
 #include "../include/lexer.h"
 
-typedef enum { VAR_INT, VAR_STRING, VAR_BOOL } VarType;
+typedef enum { VAR_INT, VAR_STRING, VAR_BOOL, VAR_ARRAY, VAR_ENTITY } VarType;
 
-typedef struct {
+struct Variable;
+struct Routine;
+struct Entity;
+struct LibraryDef;
+
+typedef struct Array {
+    struct Variable *items;
+    int count;
+    int capacity;
+} Array;
+
+typedef struct Entity {
+    char class_name[64];
+    struct Variable *static_vars;
+    int static_count;
+    int static_capacity;
+    int *static_is_public;
+    struct Variable *dynamic_vars;
+    int dynamic_count;
+    int dynamic_capacity;
+    struct Routine *methods;
+    int method_count;
+    int method_capacity;
+} Entity;
+
+typedef struct Variable {
     char *name;
     VarType type;
     int int_val;
     char *string_val;
+    Array *array_val;
+    Entity *entity_val;
     int scope_level;
 } Variable;
+
+typedef struct ClassDef {
+    char name[64];
+    char params[16][64];
+    int param_count;
+    int static_start_line;
+    int static_end_line;
+    int dynamic_start_line;
+    int dynamic_end_line;
+} ClassDef;
+
+#define MAX_CLASSES 64
+ClassDef classes[MAX_CLASSES];
+int class_count = 0;
+
+typedef struct LibraryDef {
+    char name[64];
+    Variable *const_vars;
+    int const_count;
+    int const_capacity;
+    Variable *dynamic_vars;
+    int dynamic_count;
+    int dynamic_capacity;
+    struct Routine *routines;
+    int routine_count;
+    int routine_capacity;
+} LibraryDef;
+
+#define MAX_LIBRARIES 64
+LibraryDef libraries[MAX_LIBRARIES];
+int library_count = 0;
+
+Entity *current_entity = NULL;
+LibraryDef *current_library = NULL;
+
+ClassDef* find_class(const char *name) {
+    for (int i = 0; i < class_count; i++) {
+        if (strcmp(classes[i].name, name) == 0) return &classes[i];
+    }
+    return NULL;
+}
+
+LibraryDef* find_library(const char *name) {
+    for (int i = 0; i < library_count; i++) {
+        if (strcmp(libraries[i].name, name) == 0) return &libraries[i];
+    }
+    return NULL;
+}
 
 Variable *symtable = NULL;
 int var_count = 0;
@@ -329,10 +404,12 @@ typedef struct {
     int has_replied;
     int int_val;
     char *string_val;
+    Array *array_val;
+    Entity *entity_val;
     VarType type;
 } ReplyResult;
 
-ReplyResult current_reply = {0, 0, NULL, VAR_INT};
+ReplyResult current_reply = {0, 0, NULL, NULL, NULL, VAR_INT};
 int call_stack_ptr = 0;
 int current_scope_depth = 0;
 
@@ -409,6 +486,8 @@ void throw_error(const char *name, const char *fmt, ...) {
     if (error_mode == ERR_MODE_FORCE) {
         free_all_tracked();
         printf("ERROR: %s: %s\n", current_error_name, current_error_msg);
+        fflush(stdout);
+        fflush(stderr);
         free_globals();
         exit(1);
     }
@@ -433,6 +512,8 @@ void throw_error(const char *name, const char *fmt, ...) {
         longjmp(jmp_env_stack[jmp_stack_ptr - 1], 1);
     } else {
         printf("ERROR: %s: %s\n", current_error_name, current_error_msg);
+        fflush(stdout);
+        fflush(stderr);
         free_globals();
         exit(1);
     }
@@ -454,6 +535,10 @@ int is_error_name(const char *name) {
     if (strcmp(name, "RuntimeError") == 0) return 1;
     if (strcmp(name, "InvalidErrorNameError") == 0) return 1;
     if (strcmp(name, "SystemError") == 0) return 1;
+    if (strcmp(name, "VisibilityError") == 0) return 1;
+    if (strcmp(name, "ImmutableError") == 0) return 1;
+    if (strcmp(name, "IndexOutOfBoundsError") == 0) return 1;
+    if (strcmp(name, "EntityError") == 0) return 1;
     return 0;
 }
 
@@ -467,15 +552,112 @@ typedef enum {
     PURITY_OUTBOUND
 } PurityKind;
 
-typedef struct {
+typedef struct Routine {
     char name[64];
     RoutineKind kind;
     PurityKind purity;
+    int is_private;
     char params[16][64];
     int param_count;
     int body_start_line;
     int body_end_line;
+    struct Entity *bound_entity;
+    struct LibraryDef *bound_library;
 } Routine;
+
+void copy_variable(Variable *dst, const Variable *src);
+char* array_to_string(const Array *arr);
+char* entity_to_string(const Entity *ent);
+
+Array* create_array(void) {
+    Array *arr = malloc(sizeof(Array));
+    if (!arr) { printf("ERROR: MemoryAllocationError\n"); exit(1); }
+    track_alloc((char*)arr);
+    arr->items = NULL;
+    arr->count = 0;
+    arr->capacity = 0;
+    return arr;
+}
+
+void array_append(Array *arr, const Variable *val) {
+    if (!arr) return;
+    if (arr->count >= arr->capacity) {
+        int new_cap = (arr->capacity == 0) ? 8 : arr->capacity * 2;
+        Variable *tmp = realloc(arr->items, new_cap * sizeof(Variable));
+        if (!tmp) { printf("ERROR: MemoryAllocationError\n"); exit(1); }
+        arr->items = tmp;
+        arr->capacity = new_cap;
+    }
+    copy_variable(&arr->items[arr->count++], val);
+}
+
+void copy_variable(Variable *dst, const Variable *src) {
+    if (!dst || !src) return;
+    dst->name = src->name ? strdup(src->name) : NULL;
+    dst->type = src->type;
+    dst->int_val = src->int_val;
+    dst->string_val = src->string_val ? strdup(src->string_val) : NULL;
+    dst->array_val = src->array_val;
+    dst->entity_val = src->entity_val;
+    dst->scope_level = src->scope_level;
+}
+
+char* array_to_string(const Array *arr) {
+    if (!arr || arr->count == 0) {
+        char *res = strdup("[]");
+        track_alloc(res);
+        return res;
+    }
+    int cap = 256;
+    char *buf = malloc(cap);
+    if (!buf) { printf("ERROR: MemoryAllocationError\n"); exit(1); }
+    track_alloc(buf);
+    buf[0] = '[';
+    buf[1] = '\0';
+    int len = 1;
+
+    for (int i = 0; i < arr->count; i++) {
+        char item_buf[512] = "";
+        Variable *it = &arr->items[i];
+        if (it->type == VAR_INT) {
+            snprintf(item_buf, sizeof(item_buf), "%d", it->int_val);
+        } else if (it->type == VAR_BOOL) {
+            snprintf(item_buf, sizeof(item_buf), "%s", it->int_val ? "true" : "false");
+        } else if (it->type == VAR_STRING) {
+            snprintf(item_buf, sizeof(item_buf), "\"%s\"", it->string_val ? it->string_val : "");
+        } else if (it->type == VAR_ARRAY) {
+            char *sub = array_to_string(it->array_val);
+            strncpy(item_buf, sub, sizeof(item_buf) - 1);
+        } else if (it->type == VAR_ENTITY) {
+            snprintf(item_buf, sizeof(item_buf), "<Entity:%s>", it->entity_val ? it->entity_val->class_name : "unknown");
+        }
+
+        int item_len = strlen(item_buf);
+        if (len + item_len + 4 >= cap) {
+            cap = (len + item_len + 4) * 2;
+            untrack_alloc(buf);
+            buf = realloc(buf, cap);
+            if (!buf) { printf("ERROR: MemoryAllocationError\n"); exit(1); }
+            track_alloc(buf);
+        }
+        strcat(buf, item_buf);
+        len += item_len;
+        if (i < arr->count - 1) {
+            strcat(buf, ", ");
+            len += 2;
+        }
+    }
+    strcat(buf, "]");
+    return buf;
+}
+
+char* entity_to_string(const Entity *ent) {
+    char buf[128];
+    snprintf(buf, sizeof(buf), "<Entity:%s>", ent ? ent->class_name : "unknown");
+    char *res = strdup(buf);
+    track_alloc(res);
+    return res;
+}
 
 #define MAX_ROUTINES 128
 Routine routines[MAX_ROUTINES];
@@ -490,8 +672,23 @@ typedef struct {
 CallFrame call_stack[MAX_CALL_STACK];
 
 Routine* find_routine(const char *name) {
+    if (current_entity) {
+        for (int i = 0; i < current_entity->method_count; i++) {
+            if (strcmp(current_entity->methods[i].name, name) == 0) {
+                return &current_entity->methods[i];
+            }
+        }
+    }
     for (int i = 0; i < routine_count; i++) {
         if (strcmp(routines[i].name, name) == 0) return &routines[i];
+    }
+    for (int lib_idx = 0; lib_idx < library_count; lib_idx++) {
+        LibraryDef *lib = &libraries[lib_idx];
+        for (int i = 0; i < lib->routine_count; i++) {
+            if (strcmp(lib->routines[i].name, name) == 0) {
+                return &lib->routines[i];
+            }
+        }
     }
     return NULL;
 }
@@ -533,6 +730,31 @@ Variable* get_var(const char *name) {
     for (int i = var_count - 1; i >= 0; i--) {
         if (strcmp(symtable[i].name, name) == 0) return &symtable[i];
     }
+    if (current_entity) {
+        for (int i = 0; i < current_entity->dynamic_count; i++) {
+            if (strcmp(current_entity->dynamic_vars[i].name, name) == 0) {
+                return &current_entity->dynamic_vars[i];
+            }
+        }
+        for (int i = 0; i < current_entity->static_count; i++) {
+            if (strcmp(current_entity->static_vars[i].name, name) == 0) {
+                return &current_entity->static_vars[i];
+            }
+        }
+    }
+    for (int lib_idx = 0; lib_idx < library_count; lib_idx++) {
+        LibraryDef *lib = &libraries[lib_idx];
+        for (int i = 0; i < lib->const_count; i++) {
+            if (strcmp(lib->const_vars[i].name, name) == 0) {
+                return &lib->const_vars[i];
+            }
+        }
+        for (int i = 0; i < lib->dynamic_count; i++) {
+            if (strcmp(lib->dynamic_vars[i].name, name) == 0) {
+                return &lib->dynamic_vars[i];
+            }
+        }
+    }
     return NULL;
 }
 
@@ -550,9 +772,67 @@ void pop_scope(int target_depth) {
     }
 }
 
+int is_outbound_assign = 0;
+int is_outscope_assign = 0;
+int in_entity_instantiation = 0;
+
 Variable* set_var_scoped(const char *name, int line_num) {
     if (strcmp(name, "error") == 0) {
         return get_var("error");
+    }
+
+    // Check if modifying a library constant
+    for (int lib_idx = 0; lib_idx < library_count; lib_idx++) {
+        LibraryDef *lib = &libraries[lib_idx];
+        for (int i = 0; i < lib->const_count; i++) {
+            if (strcmp(lib->const_vars[i].name, name) == 0) {
+                throw_error("ImmutableError", "Cannot modify immutable library constant '%s' on line %d", name, line_num);
+            }
+        }
+    }
+
+    if (current_entity && (is_outbound_assign || in_entity_instantiation)) {
+        for (int i = 0; i < current_entity->dynamic_count; i++) {
+            if (strcmp(current_entity->dynamic_vars[i].name, name) == 0) {
+                return &current_entity->dynamic_vars[i];
+            }
+        }
+        if (current_entity->dynamic_count >= current_entity->dynamic_capacity) {
+            int new_cap = (current_entity->dynamic_capacity == 0) ? 16 : current_entity->dynamic_capacity * 2;
+            Variable *tmp = realloc(current_entity->dynamic_vars, new_cap * sizeof(Variable));
+            if (!tmp) throw_error("MemoryAllocationError", "Memory allocation failed for entity dynamic vars");
+            current_entity->dynamic_vars = tmp;
+            current_entity->dynamic_capacity = new_cap;
+        }
+        Variable *v = &current_entity->dynamic_vars[current_entity->dynamic_count++];
+        memset(v, 0, sizeof(Variable));
+        v->name = strdup(name);
+        v->type = VAR_INT;
+        return v;
+    }
+
+    if (is_outscope_assign) {
+        for (int i = 0; i < var_count; i++) {
+            if (symtable[i].scope_level == 0 && strcmp(symtable[i].name, name) == 0) {
+                return &symtable[i];
+            }
+        }
+        if (var_count >= var_capacity) {
+            int new_capacity = (var_capacity == 0) ? 100 : var_capacity * 2;
+            Variable *tmp = realloc(symtable, new_capacity * sizeof(Variable));
+            if (!tmp) throw_error("MemoryAllocationError", "Memory allocation failed");
+            symtable = tmp;
+            var_capacity = new_capacity;
+        }
+        Variable *v = &symtable[var_count++];
+        v->name = strdup(name);
+        v->type = VAR_INT;
+        v->int_val = 0;
+        v->string_val = NULL;
+        v->array_val = NULL;
+        v->entity_val = NULL;
+        v->scope_level = 0;
+        return v;
     }
 
     Variable *existing = NULL;
@@ -616,12 +896,17 @@ void freeToken(Token *t) {
 }
 
 // Forward declarations
+void execute_line(const char *text, int line_num);
 void execute_block(int start, int end);
 int evaluate_expression(const char **cursor, char **out_str, int *out_type);
 int evaluate_operand(const char **cursor, char **out_str, int *out_type);
 void call_routine(Routine *r, const char **cursor, int line_num);
 void call_routine_val(Routine *r, const char **cursor, char **out_str, int *out_type, int *out_int, int line_num);
 
+
+Entity* instantiate_entity(ClassDef *cd, const char **cursor, int line_num);
+int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Array **out_arr, Entity **out_ent);
+int evaluate_expression_val(const char **cursor, char **out_str, int *out_type, Array **out_arr, Entity **out_ent);
 int evaluate_argument(const char **cursor, char **out_str, int *out_type, int *out_int) {
     Token peek = peekToken(cursor);
     if (peek.type == TOKEN_LPAREN) {
@@ -638,7 +923,9 @@ int evaluate_argument(const char **cursor, char **out_str, int *out_type, int *o
             freeToken(&fn_tok);
             call_routine_val(r, cursor, out_str, out_type, out_int, current_executing_line);
         } else {
-            *out_int = evaluate_expression(cursor, out_str, out_type);
+            Array *arr = NULL;
+            Entity *ent = NULL;
+            *out_int = evaluate_expression_val(cursor, out_str, out_type, &arr, &ent);
         }
         freeToken(&inner_peek);
         Token rp = getNextToken(cursor);
@@ -650,11 +937,21 @@ int evaluate_argument(const char **cursor, char **out_str, int *out_type, int *o
         return 1;
     }
     freeToken(&peek);
-    *out_int = evaluate_operand(cursor, out_str, out_type);
+    Array *arr = NULL;
+    Entity *ent = NULL;
+    *out_int = evaluate_operand_val(cursor, out_str, out_type, &arr, &ent);
     return 1;
 }
 
 void call_routine(Routine *r, const char **cursor, int line_num) {
+    if (r->is_private) {
+        if (r->bound_entity && current_entity != r->bound_entity) {
+            throw_error("VisibilityError", "Cannot call private method '%s' outside entity on line %d", r->name, line_num);
+        }
+        if (r->bound_library && current_library != r->bound_library) {
+            throw_error("VisibilityError", "Cannot call private routine '%s' outside library on line %d", r->name, line_num);
+        }
+    }
     if (call_stack_ptr >= MAX_CALL_STACK) {
         throw_error("SystemError", "Maximum call stack depth exceeded on line %d", line_num);
     }
@@ -712,9 +1009,17 @@ void call_routine(Routine *r, const char **cursor, int line_num) {
     current_reply.string_val = NULL;
     current_reply.type = VAR_INT;
 
+    Entity *saved_ent = current_entity;
+    LibraryDef *saved_lib = current_library;
+    if (r->bound_entity) current_entity = r->bound_entity;
+    if (r->bound_library) current_library = r->bound_library;
+
     if (r->body_start_line <= r->body_end_line) {
         execute_block(r->body_start_line, r->body_end_line);
     }
+
+    current_entity = saved_ent;
+    current_library = saved_lib;
 
     ReplyResult routine_reply = current_reply;
 
@@ -729,6 +1034,14 @@ void call_routine(Routine *r, const char **cursor, int line_num) {
 }
 
 void call_routine_val(Routine *r, const char **cursor, char **out_str, int *out_type, int *out_int, int line_num) {
+    if (r->is_private) {
+        if (r->bound_entity && current_entity != r->bound_entity) {
+            throw_error("VisibilityError", "Cannot call private method '%s' outside entity on line %d", r->name, line_num);
+        }
+        if (r->bound_library && current_library != r->bound_library) {
+            throw_error("VisibilityError", "Cannot call private routine '%s' outside library on line %d", r->name, line_num);
+        }
+    }
     if (r->kind == ROUTINE_METHOD) {
         throw_error("SyntaxError", "Cannot use method '%s' in an expression on line %d", r->name, line_num);
     }
@@ -789,9 +1102,17 @@ void call_routine_val(Routine *r, const char **cursor, char **out_str, int *out_
     current_reply.string_val = NULL;
     current_reply.type = VAR_INT;
 
+    Entity *saved_ent = current_entity;
+    LibraryDef *saved_lib = current_library;
+    if (r->bound_entity) current_entity = r->bound_entity;
+    if (r->bound_library) current_library = r->bound_library;
+
     if (r->body_start_line <= r->body_end_line) {
         execute_block(r->body_start_line, r->body_end_line);
     }
+
+    current_entity = saved_ent;
+    current_library = saved_lib;
 
     ReplyResult routine_reply = current_reply;
 
@@ -810,9 +1131,247 @@ void call_routine_val(Routine *r, const char **cursor, char **out_str, int *out_
     current_reply = prev_reply;
 }
 
-int evaluate_operand(const char **cursor, char **out_str, int *out_type) {
+Entity* instantiate_entity(ClassDef *cd, const char **cursor, int line_num) {
+    (void)line_num;
+    Entity *ent = calloc(1, sizeof(Entity));
+    if (!ent) throw_error("MemoryAllocationError", "Memory allocation failed for entity");
+    track_alloc((char*)ent);
+    strncpy(ent->class_name, cd->name, sizeof(ent->class_name) - 1);
+
+    typedef struct {
+        int int_val;
+        char *str_val;
+        int type;
+        Array *arr_val;
+        Entity *ent_val;
+    } EvalParam;
+
+    EvalParam evaluated_args[16];
+    for (int p = 0; p < cd->param_count; p++) {
+        char *arg_str = NULL;
+        int arg_type = VAR_INT;
+        int arg_int = 0;
+        evaluate_argument(cursor, &arg_str, &arg_type, &arg_int);
+        evaluated_args[p].int_val = arg_int;
+        evaluated_args[p].str_val = arg_str;
+        evaluated_args[p].type = arg_type;
+        evaluated_args[p].arr_val = current_reply.array_val;
+        evaluated_args[p].ent_val = current_reply.entity_val;
+        if (p < cd->param_count - 1) {
+            Token comma = peekToken(cursor);
+            if (comma.type == TOKEN_COMMA) {
+                freeToken(&comma);
+                Token c = getNextToken(cursor); freeToken(&c);
+            } else {
+                freeToken(&comma);
+            }
+        }
+    }
+
+    int prev_scope = current_scope_depth;
+    current_scope_depth++;
+
+    for (int p = 0; p < cd->param_count; p++) {
+        if (var_count >= var_capacity) {
+            int new_capacity = (var_capacity == 0) ? 100 : var_capacity * 2;
+            Variable *tmp = realloc(symtable, new_capacity * sizeof(Variable));
+            if (!tmp) throw_error("MemoryAllocationError", "Memory allocation failed");
+            symtable = tmp;
+            var_capacity = new_capacity;
+        }
+        Variable *param_var = &symtable[var_count++];
+        param_var->name = strdup(cd->params[p]);
+        param_var->scope_level = current_scope_depth;
+        param_var->type = evaluated_args[p].type;
+        param_var->int_val = evaluated_args[p].int_val;
+        if (evaluated_args[p].str_val) {
+            untrack_alloc(evaluated_args[p].str_val);
+            param_var->string_val = evaluated_args[p].str_val;
+        } else {
+            param_var->string_val = NULL;
+        }
+        param_var->array_val = evaluated_args[p].arr_val;
+        param_var->entity_val = evaluated_args[p].ent_val;
+    }
+
+    Entity *saved_ent = current_entity;
+    current_entity = ent;
+
+    // Execute static block if present
+    if (cd->static_start_line <= cd->static_end_line) {
+        for (int line_idx = cd->static_start_line; line_idx <= cd->static_end_line; line_idx++) {
+            Line *ln = &lines[line_idx];
+            if (ln->text[0] == '\0' || ln->text[0] == '!') continue;
+            const char *c = ln->text;
+            int is_pub = 0;
+            Token t = peekToken(&c);
+            if (t.type == TOKEN_PUBLIC) {
+                freeToken(&t);
+                Token pub = getNextToken(&c); freeToken(&pub);
+                is_pub = 1;
+            } else {
+                freeToken(&t);
+            }
+            Token name_tok = getNextToken(&c);
+            if (name_tok.type == TOKEN_ARR) {
+                freeToken(&name_tok);
+                name_tok = getNextToken(&c);
+            }
+            if (name_tok.type == TOKEN_IDENTIFIER) {
+                Token col = getNextToken(&c);
+                if (col.type == TOKEN_COLON) {
+                    freeToken(&col);
+                    char *out_str = NULL;
+                    int out_type = VAR_INT;
+                    Array *out_arr = NULL;
+                    Entity *out_sub_ent = NULL;
+                    int val = evaluate_expression_val(&c, &out_str, &out_type, &out_arr, &out_sub_ent);
+
+                    if (ent->static_count >= ent->static_capacity) {
+                        int new_cap = (ent->static_capacity == 0) ? 8 : ent->static_capacity * 2;
+                        Variable *tmp = realloc(ent->static_vars, new_cap * sizeof(Variable));
+                        int *ptmp = realloc(ent->static_is_public, new_cap * sizeof(int));
+                        if (!tmp || !ptmp) throw_error("MemoryAllocationError", "Memory allocation failed");
+                        ent->static_vars = tmp;
+                        ent->static_is_public = ptmp;
+                        ent->static_capacity = new_cap;
+                    }
+                    Variable *sv = &ent->static_vars[ent->static_count];
+                    memset(sv, 0, sizeof(Variable));
+                    sv->name = strdup(name_tok.value);
+                    sv->type = out_type;
+                    sv->int_val = val;
+                    sv->string_val = out_str;
+                    sv->array_val = out_arr ? out_arr : current_reply.array_val;
+                    sv->entity_val = out_sub_ent ? out_sub_ent : current_reply.entity_val;
+                    ent->static_is_public[ent->static_count] = is_pub;
+                    ent->static_count++;
+                } else {
+                    freeToken(&col);
+                }
+            }
+            freeToken(&name_tok);
+        }
+    }
+
+    // Execute dynamic block if present
+    if (cd->dynamic_start_line <= cd->dynamic_end_line) {
+        // Pass 1: register all def routines in entity methods (non-procedural!)
+        for (int line_idx = cd->dynamic_start_line; line_idx <= cd->dynamic_end_line; line_idx++) {
+            Line *ln = &lines[line_idx];
+            if (ln->text[0] == '\0' || ln->text[0] == '!') continue;
+            const char *c = ln->text;
+            int is_priv = 0;
+            Token t = peekToken(&c);
+            if (t.type == TOKEN_PRIVATE) {
+                freeToken(&t);
+                Token priv = getNextToken(&c); freeToken(&priv);
+                is_priv = 1;
+            } else {
+                freeToken(&t);
+            }
+            Token def_tok = peekToken(&c);
+            if (def_tok.type == TOKEN_DEF) {
+                freeToken(&def_tok);
+                int meth_start = line_idx + 1;
+                int meth_end = line_idx;
+                while (meth_end + 1 <= cd->dynamic_end_line) {
+                    Line *next = &lines[meth_end + 1];
+                    if (next->text[0] == '\0' || next->text[0] == '!') { meth_end++; continue; }
+                    if (next->indent > ln->indent) meth_end++;
+                    else break;
+                }
+                // Parse method into ent->methods
+                if (ent->method_count >= ent->method_capacity) {
+                    int new_cap = (ent->method_capacity == 0) ? 8 : ent->method_capacity * 2;
+                    Routine *tmp = realloc(ent->methods, new_cap * sizeof(Routine));
+                    if (!tmp) throw_error("MemoryAllocationError", "Memory allocation failed");
+                    ent->methods = tmp;
+                    ent->method_capacity = new_cap;
+                }
+                Routine *mr = &ent->methods[ent->method_count++];
+                memset(mr, 0, sizeof(Routine));
+                mr->is_private = is_priv;
+                mr->bound_entity = ent;
+                mr->body_start_line = meth_start;
+                mr->body_end_line = meth_end;
+
+                Token d = getNextToken(&c); freeToken(&d); // def
+                Token kind_tok = getNextToken(&c);
+                if (kind_tok.type == TOKEN_INBOUND || kind_tok.type == TOKEN_OUTBOUND) {
+                    mr->purity = (kind_tok.type == TOKEN_INBOUND) ? PURITY_INBOUND : PURITY_OUTBOUND;
+                    freeToken(&kind_tok);
+                    kind_tok = getNextToken(&c);
+                } else {
+                    mr->purity = PURITY_OUTBOUND;
+                }
+                mr->kind = (kind_tok.type == TOKEN_FUNC) ? ROUTINE_FUNC : ROUTINE_METHOD;
+                freeToken(&kind_tok);
+
+                Token mname = getNextToken(&c);
+                if (mname.type == TOKEN_IDENTIFIER) {
+                    strncpy(mr->name, mname.value, sizeof(mr->name) - 1);
+                }
+                freeToken(&mname);
+
+                Token lp = getNextToken(&c);
+                if (lp.type == TOKEN_LPAREN) {
+                    freeToken(&lp);
+                    while (1) {
+                        Token param = getNextToken(&c);
+                        if (param.type == TOKEN_IDENTIFIER && mr->param_count < 16) {
+                            strncpy(mr->params[mr->param_count++], param.value, 63);
+                        }
+                        if (param.type == TOKEN_RPAREN || param.type == TOKEN_EOF) {
+                            freeToken(&param);
+                            break;
+                        }
+                        freeToken(&param);
+                    }
+                } else {
+                    freeToken(&lp);
+                }
+                line_idx = meth_end;
+            } else {
+                freeToken(&def_tok);
+            }
+        }
+
+        // Pass 2: evaluate dynamic properties
+        in_entity_instantiation = 1;
+        for (int line_idx = cd->dynamic_start_line; line_idx <= cd->dynamic_end_line; line_idx++) {
+            Line *ln = &lines[line_idx];
+            if (ln->text[0] == '\0' || ln->text[0] == '!') continue;
+            if (strstr(ln->text, "def ") != NULL) {
+                // Skip routine definitions
+                int meth_end = line_idx;
+                while (meth_end + 1 <= cd->dynamic_end_line) {
+                    Line *next = &lines[meth_end + 1];
+                    if (next->text[0] == '\0' || next->text[0] == '!') { meth_end++; continue; }
+                    if (next->indent > ln->indent) meth_end++;
+                    else break;
+                }
+                line_idx = meth_end;
+                continue;
+            }
+            execute_line(ln->text, ln->line_num);
+        }
+        in_entity_instantiation = 0;
+    }
+
+    current_entity = saved_ent;
+    pop_scope(prev_scope);
+    current_scope_depth = prev_scope;
+
+    return ent;
+}
+
+int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Array **out_arr, Entity **out_ent) {
     *out_str = NULL;
     *out_type = VAR_INT;
+    if (out_arr) *out_arr = NULL;
+    if (out_ent) *out_ent = NULL;
+
     Token t = getNextToken(cursor);
     int acc = 0;
     int sign = 1;
@@ -844,6 +1403,47 @@ int evaluate_operand(const char **cursor, char **out_str, int *out_type) {
         *out_str = strdup(t.value);
         track_alloc(*out_str);
         *out_type = VAR_STRING;
+    } else if (t.type == TOKEN_LBRACKET) {
+        // Array literal [item1, item2, ...]
+        Array *arr = create_array();
+        Token peek = peekToken(cursor);
+        if (peek.type == TOKEN_RBRACKET) {
+            freeToken(&peek);
+            Token rb = getNextToken(cursor); freeToken(&rb);
+        } else {
+            freeToken(&peek);
+            while (1) {
+                char *elem_str = NULL;
+                int elem_type = VAR_INT;
+                int elem_int = 0;
+                evaluate_argument(cursor, &elem_str, &elem_type, &elem_int);
+                Variable elem_var;
+                memset(&elem_var, 0, sizeof(elem_var));
+                elem_var.type = elem_type;
+                elem_var.int_val = elem_int;
+                elem_var.string_val = elem_str;
+                elem_var.array_val = current_reply.array_val;
+                elem_var.entity_val = current_reply.entity_val;
+                array_append(arr, &elem_var);
+
+                Token sep = getNextToken(cursor);
+                if (sep.type == TOKEN_COMMA) {
+                    freeToken(&sep);
+                    continue;
+                } else if (sep.type == TOKEN_RBRACKET) {
+                    freeToken(&sep);
+                    break;
+                } else {
+                    freeToken(&sep);
+                    throw_error("SyntaxError", "Expected ',' or ']' in array literal on line %d", current_executing_line);
+                }
+            }
+        }
+        *out_type = VAR_ARRAY;
+        if (out_arr) *out_arr = arr;
+        current_reply.array_val = arr;
+        *out_str = array_to_string(arr);
+        acc = 0;
     } else if (t.type == TOKEN_LPAREN) {
         Token peek = peekToken(cursor);
         Routine *r = NULL;
@@ -855,7 +1455,7 @@ int evaluate_operand(const char **cursor, char **out_str, int *out_type) {
             freeToken(&fn_tok);
             call_routine_val(r, cursor, out_str, out_type, &acc, current_executing_line);
         } else {
-            acc = evaluate_expression(cursor, out_str, out_type);
+            acc = evaluate_expression_val(cursor, out_str, out_type, out_arr, out_ent);
         }
         freeToken(&peek);
         Token rp = getNextToken(cursor);
@@ -871,6 +1471,187 @@ int evaluate_operand(const char **cursor, char **out_str, int *out_type) {
             acc *= -1;
         }
     } else if (t.type == TOKEN_IDENTIFIER) {
+        // 1. Check if class instantiation: ClassName(...)
+        ClassDef *cd = find_class(t.value);
+        Token peek = peekToken(cursor);
+        if (cd && peek.type == TOKEN_LPAREN) {
+            freeToken(&peek);
+            Token lp = getNextToken(cursor); freeToken(&lp);
+            Entity *ent = instantiate_entity(cd, cursor, current_executing_line);
+            Token rp = getNextToken(cursor);
+            if (rp.type != TOKEN_RPAREN) {
+                freeToken(&rp);
+                throw_error("SyntaxError", "Expected ')' after class instantiation on line %d", current_executing_line);
+            }
+            freeToken(&rp);
+            *out_type = VAR_ENTITY;
+            if (out_ent) *out_ent = ent;
+            current_reply.entity_val = ent;
+            *out_str = entity_to_string(ent);
+            freeToken(&t);
+            return 0;
+        }
+
+        // 2. Check if array indexing: arr[index]
+        if (peek.type == TOKEN_LBRACKET) {
+            freeToken(&peek);
+            Token lb = getNextToken(cursor); freeToken(&lb);
+            char *idx_str = NULL;
+            int idx_type = VAR_INT;
+            int idx_val = evaluate_expression(cursor, &idx_str, &idx_type);
+            Token rb = getNextToken(cursor);
+            if (rb.type != TOKEN_RBRACKET) {
+                freeToken(&rb);
+                throw_error("SyntaxError", "Expected ']' after array index on line %d", current_executing_line);
+            }
+            freeToken(&rb);
+
+            Variable *v = get_var(t.value);
+            if (!v || v->type != VAR_ARRAY || !v->array_val) {
+                throw_error("UndefinedVariableError", "Variable '%s' is not an array on line %d", t.value, current_executing_line);
+            }
+            if (idx_val < 0 || idx_val >= v->array_val->count) {
+                throw_error("IndexOutOfBoundsError", "Array index %d out of bounds (length %d) on line %d", idx_val, v->array_val->count, current_executing_line);
+            }
+            Variable *elem = &v->array_val->items[idx_val];
+            *out_type = elem->type;
+            if (elem->type == VAR_INT) acc = elem->int_val * sign;
+            else if (elem->type == VAR_BOOL) { acc = elem->int_val; *out_type = VAR_BOOL; }
+            else if (elem->type == VAR_STRING) {
+                *out_str = elem->string_val ? strdup(elem->string_val) : strdup("");
+                track_alloc(*out_str);
+            } else if (elem->type == VAR_ARRAY) {
+                if (out_arr) *out_arr = elem->array_val;
+                current_reply.array_val = elem->array_val;
+                *out_str = array_to_string(elem->array_val);
+            } else if (elem->type == VAR_ENTITY) {
+                if (out_ent) *out_ent = elem->entity_val;
+                current_reply.entity_val = elem->entity_val;
+                *out_str = entity_to_string(elem->entity_val);
+            }
+            freeToken(&t);
+            return acc;
+        }
+
+        // 3. Check if member access or method call: ident.member
+        if (peek.type == TOKEN_DOT) {
+            freeToken(&peek);
+            Token dot = getNextToken(cursor); freeToken(&dot);
+            Token mem = getNextToken(cursor);
+            if (mem.type != TOKEN_IDENTIFIER) {
+                freeToken(&mem);
+                throw_error("SyntaxError", "Expected member name after '.' on line %d", current_executing_line);
+            }
+
+            // Check if t.value is a Library
+            LibraryDef *lib = find_library(t.value);
+            if (lib) {
+                Token call_peek = peekToken(cursor);
+                if (call_peek.type == TOKEN_LPAREN) {
+                    freeToken(&call_peek);
+                    Token lp = getNextToken(cursor); freeToken(&lp);
+                    Routine *r = NULL;
+                    for (int i = 0; i < lib->routine_count; i++) {
+                        if (strcmp(lib->routines[i].name, mem.value) == 0) { r = &lib->routines[i]; break; }
+                    }
+                    if (!r) throw_error("SyntaxError", "Library '%s' has no routine '%s' on line %d", lib->name, mem.value, current_executing_line);
+                    call_routine_val(r, cursor, out_str, out_type, &acc, current_executing_line);
+                    Token rp = getNextToken(cursor);
+                    if (rp.type != TOKEN_RPAREN) { freeToken(&rp); throw_error("SyntaxError", "Expected ')' on line %d", current_executing_line); }
+                    freeToken(&rp);
+                    freeToken(&mem);
+                    freeToken(&t);
+                    return acc;
+                } else {
+                    freeToken(&call_peek);
+                    // Library const or dynamic variable
+                    for (int i = 0; i < lib->const_count; i++) {
+                        if (strcmp(lib->const_vars[i].name, mem.value) == 0) {
+                            Variable *cv = &lib->const_vars[i];
+                            *out_type = cv->type;
+                            if (cv->type == VAR_INT) acc = cv->int_val * sign;
+                            else if (cv->type == VAR_BOOL) { acc = cv->int_val; *out_type = VAR_BOOL; }
+                            else if (cv->type == VAR_STRING) { *out_str = strdup(cv->string_val); track_alloc(*out_str); }
+                            freeToken(&mem); freeToken(&t);
+                            return acc;
+                        }
+                    }
+                    for (int i = 0; i < lib->dynamic_count; i++) {
+                        if (strcmp(lib->dynamic_vars[i].name, mem.value) == 0) {
+                            Variable *dv = &lib->dynamic_vars[i];
+                            *out_type = dv->type;
+                            if (dv->type == VAR_INT) acc = dv->int_val * sign;
+                            else if (dv->type == VAR_BOOL) { acc = dv->int_val; *out_type = VAR_BOOL; }
+                            else if (dv->type == VAR_STRING) { *out_str = strdup(dv->string_val); track_alloc(*out_str); }
+                            freeToken(&mem); freeToken(&t);
+                            return acc;
+                        }
+                    }
+                    throw_error("UndefinedVariableError", "Library '%s' has no property '%s' on line %d", lib->name, mem.value, current_executing_line);
+                }
+            }
+
+            // Entity instance variable lookup
+            Variable *ev = get_var(t.value);
+            if (!ev || ev->type != VAR_ENTITY || !ev->entity_val) {
+                throw_error("UndefinedVariableError", "Variable '%s' is not an entity on line %d", t.value, current_executing_line);
+            }
+            Entity *ent = ev->entity_val;
+            Token call_peek = peekToken(cursor);
+            if (call_peek.type == TOKEN_LPAREN) {
+                freeToken(&call_peek);
+                Token lp = getNextToken(cursor); freeToken(&lp);
+                Routine *m = NULL;
+                for (int i = 0; i < ent->method_count; i++) {
+                    if (strcmp(ent->methods[i].name, mem.value) == 0) { m = &ent->methods[i]; break; }
+                }
+                if (!m) throw_error("EntityError", "Entity '%s' has no method '%s' on line %d", ent->class_name, mem.value, current_executing_line);
+                call_routine_val(m, cursor, out_str, out_type, &acc, current_executing_line);
+                Token rp = getNextToken(cursor);
+                if (rp.type != TOKEN_RPAREN) { freeToken(&rp); throw_error("SyntaxError", "Expected ')' on line %d", current_executing_line); }
+                freeToken(&rp);
+                freeToken(&mem);
+                freeToken(&t);
+                return acc;
+            } else {
+                freeToken(&call_peek);
+                // Check dynamic properties
+                for (int i = 0; i < ent->dynamic_count; i++) {
+                    if (strcmp(ent->dynamic_vars[i].name, mem.value) == 0) {
+                        Variable *prop = &ent->dynamic_vars[i];
+                        *out_type = prop->type;
+                        if (prop->type == VAR_INT) acc = prop->int_val * sign;
+                        else if (prop->type == VAR_BOOL) { acc = prop->int_val; *out_type = VAR_BOOL; }
+                        else if (prop->type == VAR_STRING) { *out_str = strdup(prop->string_val); track_alloc(*out_str); }
+                        else if (prop->type == VAR_ARRAY) { if (out_arr) *out_arr = prop->array_val; *out_str = array_to_string(prop->array_val); }
+                        else if (prop->type == VAR_ENTITY) { if (out_ent) *out_ent = prop->entity_val; *out_str = entity_to_string(prop->entity_val); }
+                        freeToken(&mem); freeToken(&t);
+                        return acc;
+                    }
+                }
+                // Check static properties (check visibility if outside entity)
+                for (int i = 0; i < ent->static_count; i++) {
+                    if (strcmp(ent->static_vars[i].name, mem.value) == 0) {
+                        if (current_entity != ent && !ent->static_is_public[i]) {
+                            throw_error("VisibilityError", "Cannot access private static member '%s' outside entity on line %d", mem.value, current_executing_line);
+                        }
+                        Variable *prop = &ent->static_vars[i];
+                        *out_type = prop->type;
+                        if (prop->type == VAR_INT) acc = prop->int_val * sign;
+                        else if (prop->type == VAR_BOOL) { acc = prop->int_val; *out_type = VAR_BOOL; }
+                        else if (prop->type == VAR_STRING) { *out_str = strdup(prop->string_val); track_alloc(*out_str); }
+                        else if (prop->type == VAR_ARRAY) { if (out_arr) *out_arr = prop->array_val; *out_str = array_to_string(prop->array_val); }
+                        else if (prop->type == VAR_ENTITY) { if (out_ent) *out_ent = prop->entity_val; *out_str = entity_to_string(prop->entity_val); }
+                        freeToken(&mem); freeToken(&t);
+                        return acc;
+                    }
+                }
+                throw_error("EntityError", "Entity '%s' has no property '%s' on line %d", ent->class_name, mem.value, current_executing_line);
+            }
+        }
+        freeToken(&peek);
+
+        // 4. Routine lookup (user routines or library routines)
         Routine *r = find_routine(t.value);
         if (r) {
             if (r->kind == ROUTINE_METHOD) {
@@ -888,18 +1669,24 @@ int evaluate_operand(const char **cursor, char **out_str, int *out_type) {
             if (v) {
                 if (v->type == VAR_INT) acc = v->int_val * sign;
                 else if (v->type == VAR_BOOL) {
-                    if (sign == -1) {
-                        throw_error("InvalidOperandError", "Invalid operand for unary '-' on line %d", current_executing_line);
-                    }
+                    if (sign == -1) throw_error("InvalidOperandError", "Invalid operand for unary '-' on line %d", current_executing_line);
                     acc = v->int_val;
                     *out_type = VAR_BOOL;
-                } else {
-                    if (sign == -1) {
-                        throw_error("InvalidOperandError", "Invalid operand for unary '-' on line %d", current_executing_line);
-                    }
-                    *out_str = strdup(v->string_val);
+                } else if (v->type == VAR_STRING) {
+                    if (sign == -1) throw_error("InvalidOperandError", "Invalid operand for unary '-' on line %d", current_executing_line);
+                    *out_str = strdup(v->string_val ? v->string_val : "");
                     track_alloc(*out_str);
                     *out_type = VAR_STRING;
+                } else if (v->type == VAR_ARRAY) {
+                    *out_type = VAR_ARRAY;
+                    if (out_arr) *out_arr = v->array_val;
+                    current_reply.array_val = v->array_val;
+                    *out_str = array_to_string(v->array_val);
+                } else if (v->type == VAR_ENTITY) {
+                    *out_type = VAR_ENTITY;
+                    if (out_ent) *out_ent = v->entity_val;
+                    current_reply.entity_val = v->entity_val;
+                    *out_str = entity_to_string(v->entity_val);
                 }
             } else {
                 throw_error("UndefinedVariableError", "Undefined variable '%s' on line %d", t.value, current_executing_line);
@@ -912,8 +1699,12 @@ int evaluate_operand(const char **cursor, char **out_str, int *out_type) {
     return acc;
 }
 
-int evaluate_expression(const char **cursor, char **out_str, int *out_type) {
-    int acc = evaluate_operand(cursor, out_str, out_type);
+int evaluate_operand(const char **cursor, char **out_str, int *out_type) {
+    return evaluate_operand_val(cursor, out_str, out_type, NULL, NULL);
+}
+
+int evaluate_expression_val(const char **cursor, char **out_str, int *out_type, Array **out_arr, Entity **out_ent) {
+    int acc = evaluate_operand_val(cursor, out_str, out_type, out_arr, out_ent);
 
     while (1) {
         Token op = peekToken(cursor);
@@ -924,7 +1715,9 @@ int evaluate_expression(const char **cursor, char **out_str, int *out_type) {
 
             char *rhs_str = NULL;
             int rhs_type = VAR_INT;
-            int rhs_val = evaluate_operand(cursor, &rhs_str, &rhs_type);
+            Array *rhs_arr = NULL;
+            Entity *rhs_ent = NULL;
+            int rhs_val = evaluate_operand_val(cursor, &rhs_str, &rhs_type, &rhs_arr, &rhs_ent);
 
             if (op.type == TOKEN_PLUS) {
                 if (*out_str != NULL && rhs_str != NULL) {
@@ -1046,6 +1839,10 @@ int evaluate_expression(const char **cursor, char **out_str, int *out_type) {
     }
 
     return acc;
+}
+
+int evaluate_expression(const char **cursor, char **out_str, int *out_type) {
+    return evaluate_expression_val(cursor, out_str, out_type, NULL, NULL);
 }
 
 void parse_and_register_routine(const char *def_line, int body_start, int body_end, int line_num) {
@@ -1260,8 +2057,18 @@ void execute_line(const char *text, int line_num) {
 
             char *out_str = NULL;
             int out_type = VAR_INT;
-            int val = evaluate_expression(&cursor, &out_str, &out_type);
-            if (out_str) {
+            Array *out_arr = NULL;
+            Entity *out_ent = NULL;
+            int val = evaluate_expression_val(&cursor, &out_str, &out_type, &out_arr, &out_ent);
+            if (out_type == VAR_ARRAY) {
+                Array *target = out_arr ? out_arr : current_reply.array_val;
+                char *s = array_to_string(target);
+                printf("%s", s ? s : "[]");
+            } else if (out_type == VAR_ENTITY) {
+                Entity *target = out_ent ? out_ent : current_reply.entity_val;
+                char *s = entity_to_string(target);
+                printf("%s", s ? s : "<Entity>");
+            } else if (out_str) {
                 printf("%s", out_str);
                 untrack_alloc(out_str);
                 free(out_str);
@@ -1416,35 +2223,242 @@ void execute_line(const char *text, int line_num) {
                 }
             }
         }
+        else if (t.type == TOKEN_ARR) {
+            Token var_tok = getNextToken(&cursor);
+            if (var_tok.type != TOKEN_IDENTIFIER) {
+                throw_error("SyntaxError", "Expected variable name after 'arr' on line %d", line_num);
+            }
+            Token peek = peekToken(&cursor);
+            Variable *v = set_var_scoped(var_tok.value, line_num);
+            v->type = VAR_ARRAY;
+            if (peek.type == TOKEN_COLON) {
+                Token col = getNextToken(&cursor); freeToken(&col);
+                char *out_str = NULL;
+                int out_type = VAR_INT;
+                Array *out_arr = NULL;
+                Entity *out_ent = NULL;
+                evaluate_expression_val(&cursor, &out_str, &out_type, &out_arr, &out_ent);
+                if (out_type == VAR_ARRAY) {
+                    v->array_val = out_arr ? out_arr : current_reply.array_val;
+                } else {
+                    Array *single = create_array();
+                    Variable item;
+                    memset(&item, 0, sizeof(item));
+                    item.type = out_type;
+                    item.string_val = out_str;
+                    array_append(single, &item);
+                    v->array_val = single;
+                }
+            } else {
+                v->array_val = create_array();
+            }
+            freeToken(&peek);
+            freeToken(&var_tok);
+        }
+        else if (t.type == TOKEN_OUTSCOPE) {
+            is_outscope_assign = 1;
+            continue;
+        }
+        else if (t.type == TOKEN_OUTBOUND) {
+            is_outbound_assign = 1;
+            continue;
+        }
+        else if (t.type == TOKEN_PUBLIC) {
+            continue;
+        }
         else if (t.type == TOKEN_IDENTIFIER) {
             Token next = peekToken(&cursor);
-            if (next.type == TOKEN_COLON) {
+            // Array element assignment: arr[idx]: val
+            if (next.type == TOKEN_LBRACKET) {
+                freeToken(&next);
+                Token lb = getNextToken(&cursor); freeToken(&lb);
+                char *idx_str = NULL;
+                int idx_type = VAR_INT;
+                int idx_val = evaluate_expression(&cursor, &idx_str, &idx_type);
+                Token rb = getNextToken(&cursor);
+                if (rb.type != TOKEN_RBRACKET) {
+                    freeToken(&rb);
+                    throw_error("SyntaxError", "Expected ']' after array index on line %d", line_num);
+                }
+                freeToken(&rb);
+                Token colon = getNextToken(&cursor);
+                if (colon.type != TOKEN_COLON) {
+                    freeToken(&colon);
+                    throw_error("SyntaxError", "Expected ':' after array index assignment on line %d", line_num);
+                }
+                freeToken(&colon);
+                char *out_str = NULL;
+                int out_type = VAR_INT;
+                Array *out_arr = NULL;
+                Entity *out_ent = NULL;
+                int val = evaluate_expression_val(&cursor, &out_str, &out_type, &out_arr, &out_ent);
+
+                Variable *v = get_var(t.value);
+                if (!v || v->type != VAR_ARRAY || !v->array_val) {
+                    throw_error("UndefinedVariableError", "Variable '%s' is not an array on line %d", t.value, line_num);
+                }
+                if (idx_val < 0 || idx_val >= v->array_val->count) {
+                    throw_error("IndexOutOfBoundsError", "Array index %d out of bounds (length %d) on line %d", idx_val, v->array_val->count, line_num);
+                }
+                Variable *elem = &v->array_val->items[idx_val];
+                elem->type = out_type;
+                elem->int_val = val;
+                elem->string_val = out_str;
+                elem->array_val = out_arr ? out_arr : current_reply.array_val;
+                elem->entity_val = out_ent ? out_ent : current_reply.entity_val;
+            }
+            // Dot notation: ident.prop: val or ident.method(...)
+            else if (next.type == TOKEN_DOT) {
+                freeToken(&next);
+                Token dot = getNextToken(&cursor); freeToken(&dot);
+                Token mem = getNextToken(&cursor);
+                if (mem.type != TOKEN_IDENTIFIER) {
+                    freeToken(&mem);
+                    throw_error("SyntaxError", "Expected member name after '.' on line %d", line_num);
+                }
+                Token after_mem = peekToken(&cursor);
+                if (after_mem.type == TOKEN_COLON) {
+                    freeToken(&after_mem);
+                    Token colon = getNextToken(&cursor); freeToken(&colon);
+                    char *out_str = NULL;
+                    int out_type = VAR_INT;
+                    Array *out_arr = NULL;
+                    Entity *out_ent = NULL;
+                    int val = evaluate_expression_val(&cursor, &out_str, &out_type, &out_arr, &out_ent);
+
+                    LibraryDef *lib = find_library(t.value);
+                    if (lib) {
+                        for (int k = 0; k < lib->const_count; k++) {
+                            if (strcmp(lib->const_vars[k].name, mem.value) == 0) {
+                                throw_error("ImmutableError", "Cannot modify immutable library constant '%s' on line %d", mem.value, line_num);
+                            }
+                        }
+                        int found = 0;
+                        for (int k = 0; k < lib->dynamic_count; k++) {
+                            if (strcmp(lib->dynamic_vars[k].name, mem.value) == 0) {
+                                lib->dynamic_vars[k].type = out_type;
+                                lib->dynamic_vars[k].int_val = val;
+                                lib->dynamic_vars[k].string_val = out_str;
+                                found = 1;
+                                break;
+                            }
+                        }
+                        if (!found) {
+                            int new_cap = (lib->dynamic_capacity == 0) ? 8 : lib->dynamic_capacity * 2;
+                            Variable *tmp = realloc(lib->dynamic_vars, new_cap * sizeof(Variable));
+                            if (!tmp) throw_error("MemoryAllocationError", "Memory allocation failed");
+                            lib->dynamic_vars = tmp;
+                            lib->dynamic_capacity = new_cap;
+                            Variable *nv = &lib->dynamic_vars[lib->dynamic_count++];
+                            memset(nv, 0, sizeof(Variable));
+                            nv->name = strdup(mem.value);
+                            nv->type = out_type;
+                            nv->int_val = val;
+                            nv->string_val = out_str;
+                        }
+                    } else {
+                        Variable *ev = get_var(t.value);
+                        if (!ev || ev->type != VAR_ENTITY || !ev->entity_val) {
+                            throw_error("UndefinedVariableError", "Variable '%s' is not an entity on line %d", t.value, line_num);
+                        }
+                        Entity *ent = ev->entity_val;
+                        for (int k = 0; k < ent->static_count; k++) {
+                            if (strcmp(ent->static_vars[k].name, mem.value) == 0) {
+                                throw_error("ImmutableError", "Cannot modify immutable static property '%s' on line %d", mem.value, line_num);
+                            }
+                        }
+                        int found = 0;
+                        for (int k = 0; k < ent->dynamic_count; k++) {
+                            if (strcmp(ent->dynamic_vars[k].name, mem.value) == 0) {
+                                ent->dynamic_vars[k].type = out_type;
+                                ent->dynamic_vars[k].int_val = val;
+                                ent->dynamic_vars[k].string_val = out_str;
+                                ent->dynamic_vars[k].array_val = out_arr ? out_arr : current_reply.array_val;
+                                ent->dynamic_vars[k].entity_val = out_ent ? out_ent : current_reply.entity_val;
+                                found = 1;
+                                break;
+                            }
+                        }
+                        if (!found) {
+                            int new_cap = (ent->dynamic_capacity == 0) ? 8 : ent->dynamic_capacity * 2;
+                            Variable *tmp = realloc(ent->dynamic_vars, new_cap * sizeof(Variable));
+                            if (!tmp) throw_error("MemoryAllocationError", "Memory allocation failed");
+                            ent->dynamic_vars = tmp;
+                            ent->dynamic_capacity = new_cap;
+                            Variable *nv = &ent->dynamic_vars[ent->dynamic_count++];
+                            memset(nv, 0, sizeof(Variable));
+                            nv->name = strdup(mem.value);
+                            nv->type = out_type;
+                            nv->int_val = val;
+                            nv->string_val = out_str;
+                            nv->array_val = out_arr ? out_arr : current_reply.array_val;
+                            nv->entity_val = out_ent ? out_ent : current_reply.entity_val;
+                        }
+                    }
+                } else if (after_mem.type == TOKEN_LPAREN) {
+                    freeToken(&after_mem);
+                    Token lp = getNextToken(&cursor); freeToken(&lp);
+                    LibraryDef *lib = find_library(t.value);
+                    if (lib) {
+                        Routine *r = NULL;
+                        for (int k = 0; k < lib->routine_count; k++) {
+                            if (strcmp(lib->routines[k].name, mem.value) == 0) { r = &lib->routines[k]; break; }
+                        }
+                        if (!r) throw_error("SyntaxError", "Library '%s' has no routine '%s' on line %d", lib->name, mem.value, line_num);
+                        call_routine(r, &cursor, line_num);
+                        Token rp = getNextToken(&cursor);
+                        if (rp.type != TOKEN_RPAREN) { freeToken(&rp); throw_error("SyntaxError", "Expected ')' on line %d", line_num); }
+                        freeToken(&rp);
+                    } else {
+                        Variable *ev = get_var(t.value);
+                        if (!ev || ev->type != VAR_ENTITY || !ev->entity_val) {
+                            throw_error("UndefinedVariableError", "Variable '%s' is not an entity on line %d", t.value, line_num);
+                        }
+                        Entity *ent = ev->entity_val;
+                        Routine *m = NULL;
+                        for (int k = 0; k < ent->method_count; k++) {
+                            if (strcmp(ent->methods[k].name, mem.value) == 0) { m = &ent->methods[k]; break; }
+                        }
+                        if (!m) throw_error("EntityError", "Entity '%s' has no method '%s' on line %d", ent->class_name, mem.value, line_num);
+                        call_routine(m, &cursor, line_num);
+                        Token rp = getNextToken(&cursor);
+                        if (rp.type != TOKEN_RPAREN) { freeToken(&rp); throw_error("SyntaxError", "Expected ')' on line %d", line_num); }
+                        freeToken(&rp);
+                    }
+                } else {
+                    freeToken(&after_mem);
+                    throw_error("SyntaxError", "Unexpected token after member on line %d", line_num);
+                }
+                freeToken(&mem);
+            }
+            // Normal assignment: ident: expr
+            else if (next.type == TOKEN_COLON) {
                 freeToken(&next);
                 Token colon_consumed = getNextToken(&cursor);
                 freeToken(&colon_consumed);
                 char *out_str = NULL;
                 int out_type = VAR_INT;
-                int val = evaluate_expression(&cursor, &out_str, &out_type);
+                Array *out_arr = NULL;
+                Entity *out_ent = NULL;
+                int val = evaluate_expression_val(&cursor, &out_str, &out_type, &out_arr, &out_ent);
                 Variable *v = set_var_scoped(t.value, line_num);
-                if (out_str) {
-                    v->type = VAR_STRING;
+                is_outscope_assign = 0;
+                is_outbound_assign = 0;
+                v->type = out_type;
+                if (out_type == VAR_ARRAY) {
+                    v->array_val = out_arr ? out_arr : current_reply.array_val;
+                } else if (out_type == VAR_ENTITY) {
+                    v->entity_val = out_ent ? out_ent : current_reply.entity_val;
+                } else if (out_str) {
                     if (v->string_val) free(v->string_val);
                     untrack_alloc(out_str);
                     v->string_val = out_str;
                 } else if (out_type == VAR_BOOL) {
-                    v->type = VAR_BOOL;
                     v->int_val = val;
-                    if (v->string_val) {
-                        free(v->string_val);
-                        v->string_val = NULL;
-                    }
+                    if (v->string_val) { free(v->string_val); v->string_val = NULL; }
                 } else {
-                    v->type = VAR_INT;
                     v->int_val = val;
-                    if (v->string_val) {
-                        free(v->string_val);
-                        v->string_val = NULL;
-                    }
+                    if (v->string_val) { free(v->string_val); v->string_val = NULL; }
                 }
             } else {
                 freeToken(&next);
@@ -1509,7 +2523,204 @@ void execute_block(int start, int end) {
 
         suppress_jmp_active = 1;
         if (setjmp(suppress_jmp_env) == 0) {
-            if (strncmp(effective_text, "def ", 4) == 0) {
+            if (strncmp(effective_text, "class ", 6) == 0 || strncmp(effective_text, "class(", 6) == 0) {
+                int block_start = i + 1;
+                int block_end = i;
+                while (block_end + 1 <= end) {
+                    Line *next = &lines[block_end + 1];
+                    if (next->text[0] == '\0' || next->text[0] == '!') { block_end++; continue; }
+                    if (next->indent > line->indent) block_end++;
+                    else break;
+                }
+
+                if (class_count >= MAX_CLASSES) throw_error("SystemError", "Max classes exceeded on line %d", line->line_num);
+                ClassDef *cd = &classes[class_count++];
+                memset(cd, 0, sizeof(ClassDef));
+                cd->static_start_line = 1;
+                cd->static_end_line = 0;
+                cd->dynamic_start_line = 1;
+                cd->dynamic_end_line = 0;
+
+                const char *cc = effective_text + 5;
+                while (isspace((unsigned char)*cc)) cc++;
+                const char *name_start = cc;
+                while (isalnum((unsigned char)*cc) || *cc == '_') cc++;
+                int nlen = cc - name_start;
+                if (nlen > 63) nlen = 63;
+                strncpy(cd->name, name_start, nlen);
+                while (isspace((unsigned char)*cc)) cc++;
+                if (*cc == '(') {
+                    cc++;
+                    while (*cc != '\0' && *cc != ')' && cd->param_count < 16) {
+                        while (isspace((unsigned char)*cc) || *cc == ',') cc++;
+                        if (*cc == ')' || *cc == '\0') break;
+                        const char *p_start = cc;
+                        while (isalnum((unsigned char)*cc) || *cc == '_') cc++;
+                        int plen = cc - p_start;
+                        if (plen > 63) plen = 63;
+                        strncpy(cd->params[cd->param_count++], p_start, plen);
+                    }
+                }
+
+                int cur_section = 0; // 1 = static, 2 = dynamic
+                for (int idx = block_start; idx <= block_end; idx++) {
+                    Line *ln = &lines[idx];
+                    if (ln->text[0] == '\0' || ln->text[0] == '!') continue;
+                    if (strcmp(ln->text, "static:") == 0 || strncmp(ln->text, "static:", 7) == 0) {
+                        cur_section = 1;
+                        cd->static_start_line = idx + 1;
+                        cd->static_end_line = idx;
+                    } else if (strcmp(ln->text, "dynamic:") == 0 || strncmp(ln->text, "dynamic:", 8) == 0) {
+                        cur_section = 2;
+                        cd->dynamic_start_line = idx + 1;
+                        cd->dynamic_end_line = idx;
+                    } else {
+                        if (cur_section == 1) cd->static_end_line = idx;
+                        else if (cur_section == 2) cd->dynamic_end_line = idx;
+                    }
+                }
+                i = block_end + 1;
+            }
+            else if (strncmp(effective_text, "lib ", 4) == 0 || strncmp(effective_text, "library ", 8) == 0) {
+                int block_start = i + 1;
+                int block_end = i;
+                while (block_end + 1 <= end) {
+                    Line *next = &lines[block_end + 1];
+                    if (next->text[0] == '\0' || next->text[0] == '!') { block_end++; continue; }
+                    if (next->indent > line->indent) block_end++;
+                    else break;
+                }
+
+                if (library_count >= MAX_LIBRARIES) throw_error("SystemError", "Max libraries exceeded on line %d", line->line_num);
+                LibraryDef *lib = &libraries[library_count++];
+                memset(lib, 0, sizeof(LibraryDef));
+
+                const char *cc = effective_text;
+                while (*cc && !isspace((unsigned char)*cc)) cc++;
+                while (isspace((unsigned char)*cc)) cc++;
+                const char *name_start = cc;
+                while (isalnum((unsigned char)*cc) || *cc == '_') cc++;
+                int nlen = cc - name_start;
+                if (nlen > 63) nlen = 63;
+                strncpy(lib->name, name_start, nlen);
+
+                int cur_sec = 0; // 1 = const, 2 = dynamic
+                LibraryDef *prev_lib_ctx = current_library;
+                current_library = lib;
+
+                for (int idx = block_start; idx <= block_end; idx++) {
+                    Line *ln = &lines[idx];
+                    if (ln->text[0] == '\0' || ln->text[0] == '!') continue;
+                    if (strcmp(ln->text, "const:") == 0 || strncmp(ln->text, "const:", 6) == 0) {
+                        cur_sec = 1;
+                    } else if (strcmp(ln->text, "dynamic:") == 0 || strncmp(ln->text, "dynamic:", 8) == 0) {
+                        cur_sec = 2;
+                    } else {
+                        const char *c = ln->text;
+                        int is_priv = 0;
+                        Token t = peekToken(&c);
+                        if (t.type == TOKEN_PRIVATE) {
+                            freeToken(&t);
+                            Token priv = getNextToken(&c); freeToken(&priv);
+                            is_priv = 1;
+                        } else { freeToken(&t); }
+
+                        Token def_tok = peekToken(&c);
+                        if (def_tok.type == TOKEN_DEF) {
+                            freeToken(&def_tok);
+                            int meth_start = idx + 1;
+                            int meth_end = idx;
+                            while (meth_end + 1 <= block_end) {
+                                Line *next = &lines[meth_end + 1];
+                                if (next->text[0] == '\0' || next->text[0] == '!') { meth_end++; continue; }
+                                if (next->indent > ln->indent) meth_end++;
+                                else break;
+                            }
+                            if (lib->routine_count >= lib->routine_capacity) {
+                                int new_cap = (lib->routine_capacity == 0) ? 8 : lib->routine_capacity * 2;
+                                Routine *tmp = realloc(lib->routines, new_cap * sizeof(Routine));
+                                if (!tmp) throw_error("MemoryAllocationError", "Memory allocation failed");
+                                lib->routines = tmp;
+                                lib->routine_capacity = new_cap;
+                            }
+                            Routine *lr = &lib->routines[lib->routine_count++];
+                            memset(lr, 0, sizeof(Routine));
+                            lr->is_private = is_priv;
+                            lr->bound_library = lib;
+                            lr->body_start_line = meth_start;
+                            lr->body_end_line = meth_end;
+
+                            Token d = getNextToken(&c); freeToken(&d);
+                            Token kind_tok = getNextToken(&c);
+                            lr->kind = (kind_tok.type == TOKEN_FUNC) ? ROUTINE_FUNC : ROUTINE_METHOD;
+                            freeToken(&kind_tok);
+                            Token rname = getNextToken(&c);
+                            if (rname.type == TOKEN_IDENTIFIER) strncpy(lr->name, rname.value, 63);
+                            freeToken(&rname);
+                            Token lp = getNextToken(&c);
+                            if (lp.type == TOKEN_LPAREN) {
+                                freeToken(&lp);
+                                while (1) {
+                                    Token ptok = getNextToken(&c);
+                                    if (ptok.type == TOKEN_IDENTIFIER && lr->param_count < 16) {
+                                        strncpy(lr->params[lr->param_count++], ptok.value, 63);
+                                    }
+                                    if (ptok.type == TOKEN_RPAREN || ptok.type == TOKEN_EOF) { freeToken(&ptok); break; }
+                                    freeToken(&ptok);
+                                }
+                            } else { freeToken(&lp); }
+                            idx = meth_end;
+                        } else {
+                            freeToken(&def_tok);
+                            Token vname = getNextToken(&c);
+                            if (vname.type == TOKEN_IDENTIFIER) {
+                                Token col = getNextToken(&c);
+                                if (col.type == TOKEN_COLON) {
+                                    freeToken(&col);
+                                    char *out_str = NULL;
+                                    int out_type = VAR_INT;
+                                    Array *out_arr = NULL;
+                                    Entity *out_ent = NULL;
+                                    int val = evaluate_expression_val(&c, &out_str, &out_type, &out_arr, &out_ent);
+                                    if (cur_sec == 1) {
+                                        if (lib->const_count >= lib->const_capacity) {
+                                            int new_cap = (lib->const_capacity == 0) ? 8 : lib->const_capacity * 2;
+                                            Variable *tmp = realloc(lib->const_vars, new_cap * sizeof(Variable));
+                                            if (!tmp) throw_error("MemoryAllocationError", "Memory allocation failed");
+                                            lib->const_vars = tmp;
+                                            lib->const_capacity = new_cap;
+                                        }
+                                        Variable *cv = &lib->const_vars[lib->const_count++];
+                                        memset(cv, 0, sizeof(Variable));
+                                        cv->name = strdup(vname.value);
+                                        cv->type = out_type;
+                                        cv->int_val = val;
+                                        cv->string_val = out_str;
+                                    } else {
+                                        if (lib->dynamic_count >= lib->dynamic_capacity) {
+                                            int new_cap = (lib->dynamic_capacity == 0) ? 8 : lib->dynamic_capacity * 2;
+                                            Variable *tmp = realloc(lib->dynamic_vars, new_cap * sizeof(Variable));
+                                            if (!tmp) throw_error("MemoryAllocationError", "Memory allocation failed");
+                                            lib->dynamic_vars = tmp;
+                                            lib->dynamic_capacity = new_cap;
+                                        }
+                                        Variable *dv = &lib->dynamic_vars[lib->dynamic_count++];
+                                        memset(dv, 0, sizeof(Variable));
+                                        dv->name = strdup(vname.value);
+                                        dv->type = out_type;
+                                        dv->int_val = val;
+                                        dv->string_val = out_str;
+                                    }
+                                } else { freeToken(&col); }
+                            }
+                            freeToken(&vname);
+                        }
+                    }
+                }
+                current_library = prev_lib_ctx;
+                i = block_end + 1;
+            }
+            else if (strncmp(effective_text, "def ", 4) == 0) {
                 int block_start = i + 1;
                 int block_end = i;
                 while (block_end + 1 <= end) {
