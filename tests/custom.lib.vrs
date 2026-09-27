@@ -1,0 +1,9 @@
+! Custom user-defined static library
+lib CustomLib
+  const:
+    version: "1.0.0"
+  dynamic:
+    def func multiply a b
+      reply a * b
+    def func greet name
+      reply "Hello, " + name + "!"

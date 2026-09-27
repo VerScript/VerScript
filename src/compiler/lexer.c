@@ -225,6 +225,10 @@ Token getNextToken(const char **cursor) {
             token.type = TOKEN_OUTSCOPE;
             return token;
         }
+        if (len == 4 && strncmp(start, "load", 4) == 0) {
+            token.type = TOKEN_LOAD;
+            return token;
+        }
 
         token.type = TOKEN_IDENTIFIER;
         token.value = malloc(len + 1);

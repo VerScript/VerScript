@@ -1,0 +1,73 @@
+! VerScript Core Library: Math (v2.0)
+lib Math
+  const:
+    goldenRatio: 16180
+    maxInt: 2147483647
+    minInt: -2147483648
+  dynamic:
+    def func abs x
+      if x < 0 then
+        reply 0 - x
+      reply x
+
+    def func min a b
+      if a < b then
+        reply a
+      reply b
+
+    def func max a b
+      if a > b then
+        reply a
+      reply b
+
+    def func clamp val low high
+      if val < low then
+        reply low
+      if val > high then
+        reply high
+      reply val
+
+    def func sign x
+      if x < 0 then
+        reply -1
+      if x > 0 then
+        reply 1
+      reply 0
+
+    def func pow base exp
+      set result: 1
+      iterate i from 1 to exp step 1
+        set result: result * base
+      reply result
+
+    def func divRem a b
+      set q: a / b
+      set r: a - (q * b)
+      reply [q, r]
+
+    def func isEven n
+      set dr: (divRem n 2)
+      reply dr[1] = 0
+
+    def func isOdd n
+      set dr: (divRem n 2)
+      reply dr[1] != 0
+
+    def func gcd a b
+      set x: (abs a)
+      set y: (abs b)
+      while y != 0
+        set temp: y
+        set dr: (divRem x y)
+        set y: dr[1]
+        set x: temp
+      reply x
+
+    def func lcm a b
+      if a = 0 then
+        reply 0
+      if b = 0 then
+        reply 0
+      set g: (gcd a b)
+      set prod: a * b
+      reply (abs prod) / g

@@ -55,6 +55,7 @@ typedef enum {
     TOKEN_PUBLIC,
     TOKEN_PRIVATE,
     TOKEN_OUTSCOPE,
+    TOKEN_LOAD,
     TOKEN_EOF,
     TOKEN_ERROR
 } TokenType;

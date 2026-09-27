@@ -538,6 +538,8 @@ int is_error_name(const char *name) {
     if (strcmp(name, "ImmutableError") == 0) return 1;
     if (strcmp(name, "IndexOutOfBoundsError") == 0) return 1;
     if (strcmp(name, "EntityError") == 0) return 1;
+    if (strcmp(name, "FileError") == 0) return 1;
+    if (strcmp(name, "AssertError") == 0) return 1;
     return 0;
 }
 
@@ -660,6 +662,386 @@ char* entity_to_string(const Entity *ent) {
     char *res = strdup(buf);
     track_alloc(res);
     return res;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// NATIVE ARRAY OPERATIONS (camelCase)
+// ═══════════════════════════════════════════════════════════════════
+
+int array_len(const Array *arr) {
+    return arr ? arr->count : 0;
+}
+
+void array_push(Array *arr, const Variable *val) {
+    if (!arr) return;
+    array_append(arr, val);
+}
+
+int array_pop(Array *arr, Variable *out_item, int line_num) {
+    if (!arr || arr->count == 0) {
+        throw_error("IndexOutOfBoundsError", "Cannot pop from empty array on line %d", line_num);
+    }
+    arr->count--;
+    if (out_item) {
+        copy_variable(out_item, &arr->items[arr->count]);
+    }
+    return 1;
+}
+
+int array_index_of(const Array *arr, const Variable *target) {
+    if (!arr || !target) return -1;
+    for (int i = 0; i < arr->count; i++) {
+        Variable *it = &arr->items[i];
+        if (it->type == target->type) {
+            if (it->type == VAR_INT && it->int_val == target->int_val) return i;
+            if (it->type == VAR_BOOL && it->int_val == target->int_val) return i;
+            if (it->type == VAR_STRING) {
+                const char *s1 = it->string_val ? it->string_val : "";
+                const char *s2 = target->string_val ? target->string_val : "";
+                if (strcmp(s1, s2) == 0) return i;
+            }
+        }
+    }
+    return -1;
+}
+
+int array_contains(const Array *arr, const Variable *target) {
+    return array_index_of(arr, target) >= 0;
+}
+
+Array* array_slice(const Array *arr, int start, int end) {
+    Array *res = create_array();
+    if (!arr) return res;
+    int count = arr->count;
+    if (start < 0) start = 0;
+    if (start > count) start = count;
+    if (end < start) end = start;
+    if (end > count) end = count;
+    for (int i = start; i < end; i++) {
+        array_append(res, &arr->items[i]);
+    }
+    return res;
+}
+
+Array* array_reverse(Array *arr) {
+    if (!arr || arr->count <= 1) return arr;
+    int i = 0, j = arr->count - 1;
+    while (i < j) {
+        Variable tmp = arr->items[i];
+        arr->items[i] = arr->items[j];
+        arr->items[j] = tmp;
+        i++; j--;
+    }
+    return arr;
+}
+
+char* array_join(const Array *arr, const char *sep) {
+    if (!sep) sep = "";
+    if (!arr || arr->count == 0) {
+        char *r = strdup("");
+        track_alloc(r);
+        return r;
+    }
+    int cap = 256;
+    char *buf = malloc(cap);
+    if (!buf) { printf("ERROR: MemoryAllocationError\n"); exit(1); }
+    track_alloc(buf);
+    buf[0] = '\0';
+    int cur_len = 0;
+    int sep_len = strlen(sep);
+
+    for (int i = 0; i < arr->count; i++) {
+        char item_buf[512] = "";
+        Variable *it = &arr->items[i];
+        if (it->type == VAR_INT) snprintf(item_buf, sizeof(item_buf), "%d", it->int_val);
+        else if (it->type == VAR_BOOL) snprintf(item_buf, sizeof(item_buf), "%s", it->int_val ? "true" : "false");
+        else if (it->type == VAR_STRING) snprintf(item_buf, sizeof(item_buf), "%s", it->string_val ? it->string_val : "");
+        else if (it->type == VAR_ARRAY) {
+            char *sub = array_to_string(it->array_val);
+            strncpy(item_buf, sub, sizeof(item_buf) - 1);
+        }
+        int item_len = strlen(item_buf);
+        if (cur_len + item_len + sep_len + 2 >= cap) {
+            cap = (cur_len + item_len + sep_len + 2) * 2;
+            untrack_alloc(buf);
+            buf = realloc(buf, cap);
+            if (!buf) { printf("ERROR: MemoryAllocationError\n"); exit(1); }
+            track_alloc(buf);
+        }
+        strcat(buf, item_buf);
+        cur_len += item_len;
+        if (i < arr->count - 1 && sep_len > 0) {
+            strcat(buf, sep);
+            cur_len += sep_len;
+        }
+    }
+    return buf;
+}
+
+void array_swap(Array *arr, int i, int j, int line_num) {
+    if (!arr || i < 0 || i >= arr->count || j < 0 || j >= arr->count) {
+        throw_error("IndexOutOfBoundsError", "Array index out of bounds in swap on line %d", line_num);
+    }
+    Variable tmp = arr->items[i];
+    arr->items[i] = arr->items[j];
+    arr->items[j] = tmp;
+}
+
+void array_clear(Array *arr) {
+    if (!arr) return;
+    for (int i = 0; i < arr->count; i++) {
+        if (arr->items[i].string_val) free(arr->items[i].string_val);
+        if (arr->items[i].name) free(arr->items[i].name);
+    }
+    arr->count = 0;
+}
+
+void array_fill(Array *arr, const Variable *val, int count) {
+    if (!arr || !val) return;
+    if (count > 0) {
+        array_clear(arr);
+        for (int i = 0; i < count; i++) {
+            array_append(arr, val);
+        }
+    } else {
+        for (int i = 0; i < arr->count; i++) {
+            if (arr->items[i].string_val) free(arr->items[i].string_val);
+            if (arr->items[i].name) free(arr->items[i].name);
+            copy_variable(&arr->items[i], val);
+        }
+    }
+}
+
+int array_is_empty(const Array *arr) {
+    return (!arr || arr->count == 0);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// NATIVE STRING OPERATIONS (camelCase)
+// ═══════════════════════════════════════════════════════════════════
+
+int string_len(const char *str) {
+    return str ? (int)strlen(str) : 0;
+}
+
+int string_index_of(const char *str, const char *sub) {
+    if (!str || !sub) return -1;
+    const char *pos = strstr(str, sub);
+    return pos ? (int)(pos - str) : -1;
+}
+
+int string_contains(const char *str, const char *sub) {
+    return string_index_of(str, sub) >= 0;
+}
+
+char* string_slice(const char *str, int start, int end) {
+    if (!str) { char *r = strdup(""); track_alloc(r); return r; }
+    int len = (int)strlen(str);
+    if (start < 0) start = 0;
+    if (start > len) start = len;
+    if (end < start) end = start;
+    if (end > len) end = len;
+    int sub_len = end - start;
+    char *buf = malloc(sub_len + 1);
+    if (!buf) { printf("ERROR: MemoryAllocationError\n"); exit(1); }
+    track_alloc(buf);
+    memcpy(buf, str + start, sub_len);
+    buf[sub_len] = '\0';
+    return buf;
+}
+
+char* string_repeat(const char *str, int count) {
+    if (!str || count <= 0) { char *r = strdup(""); track_alloc(r); return r; }
+    int len = (int)strlen(str);
+    int total = len * count;
+    char *buf = malloc(total + 1);
+    if (!buf) { printf("ERROR: MemoryAllocationError\n"); exit(1); }
+    track_alloc(buf);
+    buf[0] = '\0';
+    for (int i = 0; i < count; i++) strcat(buf, str);
+    return buf;
+}
+
+char* string_pad_left(const char *str, int target_len, const char *pad_char) {
+    const char *p = (pad_char && pad_char[0] != '\0') ? pad_char : " ";
+    int cur_len = str ? (int)strlen(str) : 0;
+    if (cur_len >= target_len) {
+        char *r = strdup(str ? str : "");
+        track_alloc(r);
+        return r;
+    }
+    int diff = target_len - cur_len;
+    char *buf = malloc(target_len + 1);
+    if (!buf) { printf("ERROR: MemoryAllocationError\n"); exit(1); }
+    track_alloc(buf);
+    buf[0] = '\0';
+    int plen = strlen(p);
+    for (int i = 0; i < diff; i++) {
+        buf[i] = p[i % plen];
+    }
+    buf[diff] = '\0';
+    strcat(buf, str ? str : "");
+    return buf;
+}
+
+char* string_pad_right(const char *str, int target_len, const char *pad_char) {
+    const char *p = (pad_char && pad_char[0] != '\0') ? pad_char : " ";
+    int cur_len = str ? (int)strlen(str) : 0;
+    if (cur_len >= target_len) {
+        char *r = strdup(str ? str : "");
+        track_alloc(r);
+        return r;
+    }
+    char *buf = malloc(target_len + 1);
+    if (!buf) { printf("ERROR: MemoryAllocationError\n"); exit(1); }
+    track_alloc(buf);
+    strcpy(buf, str ? str : "");
+    int plen = strlen(p);
+    for (int i = cur_len; i < target_len; i++) {
+        buf[i] = p[(i - cur_len) % plen];
+    }
+    buf[target_len] = '\0';
+    return buf;
+}
+
+int string_is_empty(const char *str) {
+    return (!str || str[0] == '\0');
+}
+
+char* string_trim(const char *str) {
+    if (!str) { char *r = strdup(""); track_alloc(r); return r; }
+    while (isspace((unsigned char)*str)) str++;
+    if (*str == '\0') { char *r = strdup(""); track_alloc(r); return r; }
+    const char *end = str + strlen(str) - 1;
+    while (end > str && isspace((unsigned char)*end)) end--;
+    int len = (int)(end - str + 1);
+    char *buf = malloc(len + 1);
+    if (!buf) { printf("ERROR: MemoryAllocationError\n"); exit(1); }
+    track_alloc(buf);
+    memcpy(buf, str, len);
+    buf[len] = '\0';
+    return buf;
+}
+
+char* string_to_upper(const char *str) {
+    if (!str) { char *r = strdup(""); track_alloc(r); return r; }
+    char *buf = strdup(str);
+    track_alloc(buf);
+    for (char *p = buf; *p; p++) *p = toupper((unsigned char)*p);
+    return buf;
+}
+
+char* string_to_lower(const char *str) {
+    if (!str) { char *r = strdup(""); track_alloc(r); return r; }
+    char *buf = strdup(str);
+    track_alloc(buf);
+    for (char *p = buf; *p; p++) *p = tolower((unsigned char)*p);
+    return buf;
+}
+
+Array* string_split(const char *str, const char *sep) {
+    Array *arr = create_array();
+    if (!str) return arr;
+    if (!sep || sep[0] == '\0') sep = " ";
+    char *dup = strdup(str);
+    int sep_len = strlen(sep);
+    char *cursor = dup;
+    while (cursor && *cursor) {
+        char *pos = strstr(cursor, sep);
+        if (pos) {
+            *pos = '\0';
+            Variable v;
+            memset(&v, 0, sizeof(v));
+            v.type = VAR_STRING;
+            v.string_val = strdup(cursor);
+            array_append(arr, &v);
+            free(v.string_val);
+            cursor = pos + sep_len;
+        } else {
+            Variable v;
+            memset(&v, 0, sizeof(v));
+            v.type = VAR_STRING;
+            v.string_val = strdup(cursor);
+            array_append(arr, &v);
+            free(v.string_val);
+            break;
+        }
+    }
+    free(dup);
+    return arr;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// EMBEDDED STANDARD RELEASE CORE LIBRARIES
+// ═══════════════════════════════════════════════════════════════════
+
+static const char *CORE_LIB_MATH =
+    "lib Math\n"
+    "  const:\n"
+    "    goldenRatio: 16180\n"
+    "    maxInt: 2147483647\n"
+    "    minInt: -2147483648\n"
+    "  dynamic:\n"
+    "    def func abs x\n"
+    "      if x < 0 then\n"
+    "        reply 0 - x\n"
+    "      reply x\n"
+    "    def func min a b\n"
+    "      if a < b then\n"
+    "        reply a\n"
+    "      reply b\n"
+    "    def func max a b\n"
+    "      if a > b then\n"
+    "        reply a\n"
+    "      reply b\n"
+    "    def func clamp val low high\n"
+    "      if val < low then\n"
+    "        reply low\n"
+    "      if val > high then\n"
+    "        reply high\n"
+    "      reply val\n"
+    "    def func sign x\n"
+    "      if x < 0 then\n"
+    "        reply -1\n"
+    "      if x > 0 then\n"
+    "        reply 1\n"
+    "      reply 0\n"
+    "    def func pow base exp\n"
+    "      set result: 1\n"
+    "      iterate i from 1 to exp step 1\n"
+    "        set result: result * base\n"
+    "      reply result\n"
+    "    def func divRem a b\n"
+    "      set q: a / b\n"
+    "      set r: a - (q * b)\n"
+    "      reply [q, r]\n"
+    "    def func isEven n\n"
+    "      set dr: (divRem n 2)\n"
+    "      reply dr[1] = 0\n"
+    "    def func isOdd n\n"
+    "      set dr: (divRem n 2)\n"
+    "      reply dr[1] != 0\n"
+    "    def func gcd a b\n"
+    "      set x: (abs a)\n"
+    "      set y: (abs b)\n"
+    "      while y != 0\n"
+    "        set temp: y\n"
+    "        set dr: (divRem x y)\n"
+    "        set y: dr[1]\n"
+    "        set x: temp\n"
+    "      reply x\n"
+    "    def func lcm a b\n"
+    "      if a = 0 then\n"
+    "        reply 0\n"
+    "      if b = 0 then\n"
+    "        reply 0\n"
+    "      set g: (gcd a b)\n"
+    "      set prod: a * b\n"
+    "      reply (abs prod) / g\n";
+
+const char* get_embedded_core_lib(const char *name) {
+    if (strcmp(name, "Math") == 0) return CORE_LIB_MATH;
+    return NULL;
 }
 
 #define MAX_ROUTINES 128
@@ -908,12 +1290,17 @@ int evaluate_expression(const char **cursor, char **out_str, int *out_type);
 int evaluate_operand(const char **cursor, char **out_str, int *out_type);
 void call_routine(Routine *r, const char **cursor, int line_num);
 void call_routine_val(Routine *r, const char **cursor, char **out_str, int *out_type, int *out_int, int line_num);
-
+void parse_lines(const char *buffer);
+void load_library(const char *target, int line_num);
+void load_library_source(const char *source, const char *origin_name, int line_num);
 
 Entity* instantiate_entity(ClassDef *cd, const char **cursor, int line_num);
 int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Array **out_arr, Entity **out_ent);
 int evaluate_expression_val(const char **cursor, char **out_str, int *out_type, Array **out_arr, Entity **out_ent);
-int evaluate_argument(const char **cursor, char **out_str, int *out_type, int *out_int) {
+int dispatch_array_method(Array *arr, const char *method, const char **cursor, char **out_str, int *out_type, Array **out_arr, Entity **out_ent, int line_num);
+int dispatch_string_method(const char *str, const char *method, const char **cursor, char **out_str, int *out_type, Array **out_arr, Entity **out_ent, int line_num);
+int is_native_func_name(const char *name);
+int evaluate_argument(const char **cursor, char **out_str, int *out_type, int *out_int, Array **out_arr, Entity **out_ent) {
     Token peek = peekToken(cursor);
     if (peek.type == TOKEN_LPAREN) {
         freeToken(&peek);
@@ -928,10 +1315,10 @@ int evaluate_argument(const char **cursor, char **out_str, int *out_type, int *o
             Token fn_tok = getNextToken(cursor);
             freeToken(&fn_tok);
             call_routine_val(r, cursor, out_str, out_type, out_int, current_executing_line);
+            if (out_arr) *out_arr = current_reply.array_val;
+            if (out_ent) *out_ent = current_reply.entity_val;
         } else {
-            Array *arr = NULL;
-            Entity *ent = NULL;
-            *out_int = evaluate_expression_val(cursor, out_str, out_type, &arr, &ent);
+            *out_int = evaluate_expression_val(cursor, out_str, out_type, out_arr, out_ent);
         }
         freeToken(&inner_peek);
         Token rp = getNextToken(cursor);
@@ -943,9 +1330,7 @@ int evaluate_argument(const char **cursor, char **out_str, int *out_type, int *o
         return 1;
     }
     freeToken(&peek);
-    Array *arr = NULL;
-    Entity *ent = NULL;
-    *out_int = evaluate_operand_val(cursor, out_str, out_type, &arr, &ent);
+    *out_int = evaluate_operand_val(cursor, out_str, out_type, out_arr, out_ent);
     return 1;
 }
 
@@ -966,6 +1351,8 @@ void call_routine(Routine *r, const char **cursor, int line_num) {
         int int_val;
         char *str_val;
         int type;
+        Array *arr_val;
+        Entity *ent_val;
     } EvaluatedArg;
 
     EvaluatedArg evaluated_args[16];
@@ -973,10 +1360,24 @@ void call_routine(Routine *r, const char **cursor, int line_num) {
         char *arg_str = NULL;
         int arg_type = VAR_INT;
         int arg_int = 0;
-        evaluate_argument(cursor, &arg_str, &arg_type, &arg_int);
+        Array *arg_arr = NULL;
+        Entity *arg_ent = NULL;
+        evaluate_argument(cursor, &arg_str, &arg_type, &arg_int, &arg_arr, &arg_ent);
         evaluated_args[p].int_val = arg_int;
         evaluated_args[p].str_val = arg_str;
         evaluated_args[p].type = arg_type;
+        evaluated_args[p].arr_val = arg_arr;
+        evaluated_args[p].ent_val = arg_ent;
+        if (p < r->param_count - 1) {
+            Token sep = peekToken(cursor);
+            if (sep.type == TOKEN_COMMA) {
+                freeToken(&sep);
+                Token cm = getNextToken(cursor);
+                freeToken(&cm);
+            } else {
+                freeToken(&sep);
+            }
+        }
     }
 
     int prev_scope = current_scope_depth;
@@ -1001,6 +1402,8 @@ void call_routine(Routine *r, const char **cursor, int line_num) {
         param_var->scope_level = current_scope_depth;
         param_var->type = evaluated_args[p].type;
         param_var->int_val = evaluated_args[p].int_val;
+        param_var->array_val = evaluated_args[p].arr_val;
+        param_var->entity_val = evaluated_args[p].ent_val;
         if (evaluated_args[p].str_val) {
             untrack_alloc(evaluated_args[p].str_val);
             param_var->string_val = evaluated_args[p].str_val;
@@ -1059,6 +1462,8 @@ void call_routine_val(Routine *r, const char **cursor, char **out_str, int *out_
         int int_val;
         char *str_val;
         int type;
+        Array *arr_val;
+        Entity *ent_val;
     } EvaluatedArg;
 
     EvaluatedArg evaluated_args[16];
@@ -1066,10 +1471,24 @@ void call_routine_val(Routine *r, const char **cursor, char **out_str, int *out_
         char *arg_str = NULL;
         int arg_type = VAR_INT;
         int arg_int = 0;
-        evaluate_argument(cursor, &arg_str, &arg_type, &arg_int);
+        Array *arg_arr = NULL;
+        Entity *arg_ent = NULL;
+        evaluate_argument(cursor, &arg_str, &arg_type, &arg_int, &arg_arr, &arg_ent);
         evaluated_args[p].int_val = arg_int;
         evaluated_args[p].str_val = arg_str;
         evaluated_args[p].type = arg_type;
+        evaluated_args[p].arr_val = arg_arr;
+        evaluated_args[p].ent_val = arg_ent;
+        if (p < r->param_count - 1) {
+            Token sep = peekToken(cursor);
+            if (sep.type == TOKEN_COMMA) {
+                freeToken(&sep);
+                Token cm = getNextToken(cursor);
+                freeToken(&cm);
+            } else {
+                freeToken(&sep);
+            }
+        }
     }
 
     int prev_scope = current_scope_depth;
@@ -1094,6 +1513,8 @@ void call_routine_val(Routine *r, const char **cursor, char **out_str, int *out_
         param_var->scope_level = current_scope_depth;
         param_var->type = evaluated_args[p].type;
         param_var->int_val = evaluated_args[p].int_val;
+        param_var->array_val = evaluated_args[p].arr_val;
+        param_var->entity_val = evaluated_args[p].ent_val;
         if (evaluated_args[p].str_val) {
             untrack_alloc(evaluated_args[p].str_val);
             param_var->string_val = evaluated_args[p].str_val;
@@ -1128,13 +1549,25 @@ void call_routine_val(Routine *r, const char **cursor, char **out_str, int *out_
 
     *out_int = routine_reply.int_val;
     *out_type = routine_reply.type;
+    current_reply = prev_reply;
+    if (routine_reply.type == VAR_ARRAY) {
+        current_reply.array_val = routine_reply.array_val;
+        if (!routine_reply.string_val) {
+            *out_str = array_to_string(routine_reply.array_val);
+        }
+    }
+    if (routine_reply.type == VAR_ENTITY) {
+        current_reply.entity_val = routine_reply.entity_val;
+        if (!routine_reply.string_val) {
+            *out_str = entity_to_string(routine_reply.entity_val);
+        }
+    }
     if (routine_reply.string_val) {
         *out_str = routine_reply.string_val;
         track_alloc(*out_str);
-    } else {
+    } else if (routine_reply.type != VAR_ARRAY && routine_reply.type != VAR_ENTITY) {
         *out_str = NULL;
     }
-    current_reply = prev_reply;
 }
 
 Entity* instantiate_entity(ClassDef *cd, const char **cursor, int line_num) {
@@ -1157,12 +1590,14 @@ Entity* instantiate_entity(ClassDef *cd, const char **cursor, int line_num) {
         char *arg_str = NULL;
         int arg_type = VAR_INT;
         int arg_int = 0;
-        evaluate_argument(cursor, &arg_str, &arg_type, &arg_int);
+        Array *arg_arr = NULL;
+        Entity *arg_ent = NULL;
+        evaluate_argument(cursor, &arg_str, &arg_type, &arg_int, &arg_arr, &arg_ent);
         evaluated_args[p].int_val = arg_int;
         evaluated_args[p].str_val = arg_str;
         evaluated_args[p].type = arg_type;
-        evaluated_args[p].arr_val = current_reply.array_val;
-        evaluated_args[p].ent_val = current_reply.entity_val;
+        evaluated_args[p].arr_val = arg_arr;
+        evaluated_args[p].ent_val = arg_ent;
         if (p < cd->param_count - 1) {
             Token comma = peekToken(cursor);
             if (comma.type == TOKEN_COMMA) {
@@ -1327,22 +1762,20 @@ Entity* instantiate_entity(ClassDef *cd, const char **cursor, int line_num) {
                 }
                 freeToken(&mname);
 
-                Token lp = getNextToken(&c);
-                if (lp.type == TOKEN_LPAREN) {
-                    freeToken(&lp);
-                    while (1) {
-                        Token param = getNextToken(&c);
-                        if (param.type == TOKEN_IDENTIFIER && mr->param_count < 16) {
-                            strncpy(mr->params[mr->param_count++], param.value, 63);
-                        }
-                        if (param.type == TOKEN_RPAREN || param.type == TOKEN_EOF) {
-                            freeToken(&param);
-                            break;
-                        }
+                while (1) {
+                    Token param = getNextToken(&c);
+                    if (param.type == TOKEN_EOF || param.type == TOKEN_RPAREN) {
                         freeToken(&param);
+                        break;
                     }
-                } else {
-                    freeToken(&lp);
+                    if (param.type == TOKEN_LPAREN || param.type == TOKEN_COMMA) {
+                        freeToken(&param);
+                        continue;
+                    }
+                    if (param.type == TOKEN_IDENTIFIER && mr->param_count < 16) {
+                        strncpy(mr->params[mr->param_count++], param.value, 63);
+                    }
+                    freeToken(&param);
                 }
                 line_idx = meth_end;
             } else {
@@ -1377,6 +1810,321 @@ Entity* instantiate_entity(ClassDef *cd, const char **cursor, int line_num) {
     current_scope_depth = prev_scope;
 
     return ent;
+}
+
+int is_native_func_name(const char *name) {
+    if (!name) return 0;
+    if (strcmp(name, "len") == 0 || strcmp(name, "length") == 0) return 1;
+    if (strcmp(name, "isEmpty") == 0) return 1;
+    if (strcmp(name, "indexOf") == 0) return 1;
+    if (strcmp(name, "contains") == 0) return 1;
+    if (strcmp(name, "slice") == 0) return 1;
+    if (strcmp(name, "reverse") == 0) return 1;
+    if (strcmp(name, "join") == 0) return 1;
+    if (strcmp(name, "trim") == 0) return 1;
+    if (strcmp(name, "toUpper") == 0) return 1;
+    if (strcmp(name, "toLower") == 0) return 1;
+    if (strcmp(name, "split") == 0) return 1;
+    if (strcmp(name, "repeat") == 0) return 1;
+    if (strcmp(name, "padLeft") == 0) return 1;
+    if (strcmp(name, "padRight") == 0) return 1;
+    return 0;
+}
+
+int dispatch_array_method(Array *arr, const char *method, const char **cursor, char **out_str, int *out_type, Array **out_arr, Entity **out_ent, int line_num) {
+    (void)out_ent;
+    *out_type = VAR_INT;
+    if (out_str) *out_str = NULL;
+    if (out_arr) *out_arr = NULL;
+
+    Token lp = peekToken(cursor);
+    int has_parens = 0;
+    if (lp.type == TOKEN_LPAREN) {
+        has_parens = 1;
+        freeToken(&lp);
+        Token t_lp = getNextToken(cursor);
+        freeToken(&t_lp);
+    } else {
+        freeToken(&lp);
+    }
+
+    int arg_count = 0;
+    Variable args[8];
+    memset(args, 0, sizeof(args));
+
+    if (has_parens) {
+        Token p = peekToken(cursor);
+        if (p.type != TOKEN_RPAREN && p.type != TOKEN_EOF) {
+            freeToken(&p);
+            while (arg_count < 8) {
+                char *a_str = NULL;
+                int a_type = VAR_INT;
+                Array *a_arr = NULL;
+                Entity *a_ent = NULL;
+                int a_int = evaluate_expression_val(cursor, &a_str, &a_type, &a_arr, &a_ent);
+                args[arg_count].type = a_type;
+                args[arg_count].int_val = a_int;
+                args[arg_count].string_val = a_str;
+                args[arg_count].array_val = a_arr ? a_arr : current_reply.array_val;
+                args[arg_count].entity_val = a_ent ? a_ent : current_reply.entity_val;
+                arg_count++;
+
+                Token sep = peekToken(cursor);
+                if (sep.type == TOKEN_COMMA) {
+                    freeToken(&sep);
+                    Token cm = getNextToken(cursor); freeToken(&cm);
+                } else {
+                    freeToken(&sep);
+                    break;
+                }
+            }
+        } else {
+            freeToken(&p);
+        }
+        Token rp = getNextToken(cursor);
+        if (rp.type != TOKEN_RPAREN) {
+            freeToken(&rp);
+            throw_error("SyntaxError", "Expected ')' after array method call on line %d", line_num);
+        }
+        freeToken(&rp);
+    }
+
+    if (strcmp(method, "len") == 0 || strcmp(method, "length") == 0) {
+        *out_type = VAR_INT;
+        return array_len(arr);
+    }
+    if (strcmp(method, "isEmpty") == 0) {
+        *out_type = VAR_BOOL;
+        return array_is_empty(arr);
+    }
+    if (strcmp(method, "push") == 0) {
+        if (arg_count > 0) array_push(arr, &args[0]);
+        *out_type = VAR_INT;
+        return arr ? arr->count : 0;
+    }
+    if (strcmp(method, "pop") == 0) {
+        Variable popped;
+        memset(&popped, 0, sizeof(popped));
+        array_pop(arr, &popped, line_num);
+        *out_type = popped.type;
+        if (popped.type == VAR_STRING) {
+            *out_str = popped.string_val ? strdup(popped.string_val) : strdup("");
+            track_alloc(*out_str);
+            return 0;
+        }
+        if (popped.type == VAR_ARRAY) {
+            if (out_arr) *out_arr = popped.array_val;
+            current_reply.array_val = popped.array_val;
+            *out_str = array_to_string(popped.array_val);
+            return 0;
+        }
+        if (popped.type == VAR_ENTITY) {
+            if (out_ent) *out_ent = popped.entity_val;
+            current_reply.entity_val = popped.entity_val;
+            *out_str = entity_to_string(popped.entity_val);
+            return 0;
+        }
+        return popped.int_val;
+    }
+    if (strcmp(method, "indexOf") == 0) {
+        *out_type = VAR_INT;
+        if (arg_count == 0) return -1;
+        return array_index_of(arr, &args[0]);
+    }
+    if (strcmp(method, "contains") == 0) {
+        *out_type = VAR_BOOL;
+        if (arg_count == 0) return 0;
+        return array_contains(arr, &args[0]);
+    }
+    if (strcmp(method, "slice") == 0) {
+        int start = (arg_count > 0) ? args[0].int_val : 0;
+        int end = (arg_count > 1) ? args[1].int_val : (arr ? arr->count : 0);
+        Array *res = array_slice(arr, start, end);
+        *out_type = VAR_ARRAY;
+        if (out_arr) *out_arr = res;
+        current_reply.array_val = res;
+        *out_str = array_to_string(res);
+        return 0;
+    }
+    if (strcmp(method, "reverse") == 0) {
+        array_reverse(arr);
+        *out_type = VAR_ARRAY;
+        if (out_arr) *out_arr = arr;
+        current_reply.array_val = arr;
+        *out_str = array_to_string(arr);
+        return 0;
+    }
+    if (strcmp(method, "join") == 0) {
+        const char *sep = (arg_count > 0 && args[0].string_val) ? args[0].string_val : "";
+        char *j = array_join(arr, sep);
+        *out_type = VAR_STRING;
+        *out_str = j;
+        return 0;
+    }
+    if (strcmp(method, "swap") == 0) {
+        int i1 = (arg_count > 0) ? args[0].int_val : 0;
+        int i2 = (arg_count > 1) ? args[1].int_val : 0;
+        array_swap(arr, i1, i2, line_num);
+        *out_type = VAR_INT;
+        return 1;
+    }
+    if (strcmp(method, "fill") == 0) {
+        Variable *v = (arg_count > 0) ? &args[0] : NULL;
+        int count = (arg_count > 1) ? args[1].int_val : 0;
+        array_fill(arr, v, count);
+        *out_type = VAR_ARRAY;
+        if (out_arr) *out_arr = arr;
+        current_reply.array_val = arr;
+        *out_str = array_to_string(arr);
+        return 0;
+    }
+    if (strcmp(method, "clear") == 0) {
+        array_clear(arr);
+        *out_type = VAR_INT;
+        return 1;
+    }
+
+    throw_error("SyntaxError", "Unknown Array method '%s' on line %d", method, line_num);
+    return 0;
+}
+
+int dispatch_string_method(const char *str, const char *method, const char **cursor, char **out_str, int *out_type, Array **out_arr, Entity **out_ent, int line_num) {
+    (void)out_ent;
+    *out_type = VAR_INT;
+    if (out_str) *out_str = NULL;
+    if (out_arr) *out_arr = NULL;
+
+    Token lp = peekToken(cursor);
+    int has_parens = 0;
+    if (lp.type == TOKEN_LPAREN) {
+        has_parens = 1;
+        freeToken(&lp);
+        Token t_lp = getNextToken(cursor);
+        freeToken(&t_lp);
+    } else {
+        freeToken(&lp);
+    }
+
+    int arg_count = 0;
+    Variable args[8];
+    memset(args, 0, sizeof(args));
+
+    if (has_parens) {
+        Token p = peekToken(cursor);
+        if (p.type != TOKEN_RPAREN && p.type != TOKEN_EOF) {
+            freeToken(&p);
+            while (arg_count < 8) {
+                char *a_str = NULL;
+                int a_type = VAR_INT;
+                Array *a_arr = NULL;
+                Entity *a_ent = NULL;
+                int a_int = evaluate_expression_val(cursor, &a_str, &a_type, &a_arr, &a_ent);
+                args[arg_count].type = a_type;
+                args[arg_count].int_val = a_int;
+                args[arg_count].string_val = a_str;
+                args[arg_count].array_val = a_arr ? a_arr : current_reply.array_val;
+                args[arg_count].entity_val = a_ent ? a_ent : current_reply.entity_val;
+                arg_count++;
+
+                Token sep = peekToken(cursor);
+                if (sep.type == TOKEN_COMMA) {
+                    freeToken(&sep);
+                    Token cm = getNextToken(cursor); freeToken(&cm);
+                } else {
+                    freeToken(&sep);
+                    break;
+                }
+            }
+        } else {
+            freeToken(&p);
+        }
+        Token rp = getNextToken(cursor);
+        if (rp.type != TOKEN_RPAREN) {
+            freeToken(&rp);
+            throw_error("SyntaxError", "Expected ')' after string method call on line %d", line_num);
+        }
+        freeToken(&rp);
+    }
+
+    if (strcmp(method, "len") == 0 || strcmp(method, "length") == 0) {
+        *out_type = VAR_INT;
+        return string_len(str);
+    }
+    if (strcmp(method, "isEmpty") == 0) {
+        *out_type = VAR_BOOL;
+        return string_is_empty(str);
+    }
+    if (strcmp(method, "indexOf") == 0) {
+        *out_type = VAR_INT;
+        const char *sub = (arg_count > 0 && args[0].string_val) ? args[0].string_val : "";
+        return string_index_of(str, sub);
+    }
+    if (strcmp(method, "contains") == 0) {
+        *out_type = VAR_BOOL;
+        const char *sub = (arg_count > 0 && args[0].string_val) ? args[0].string_val : "";
+        return string_contains(str, sub);
+    }
+    if (strcmp(method, "slice") == 0) {
+        int start = (arg_count > 0) ? args[0].int_val : 0;
+        int end = (arg_count > 1) ? args[1].int_val : (str ? (int)strlen(str) : 0);
+        char *sl = string_slice(str, start, end);
+        *out_type = VAR_STRING;
+        *out_str = sl;
+        return 0;
+    }
+    if (strcmp(method, "repeat") == 0) {
+        int count = (arg_count > 0) ? args[0].int_val : 1;
+        char *rep = string_repeat(str, count);
+        *out_type = VAR_STRING;
+        *out_str = rep;
+        return 0;
+    }
+    if (strcmp(method, "padLeft") == 0) {
+        int target_len = (arg_count > 0) ? args[0].int_val : 0;
+        const char *pad = (arg_count > 1 && args[1].string_val) ? args[1].string_val : " ";
+        char *res = string_pad_left(str, target_len, pad);
+        *out_type = VAR_STRING;
+        *out_str = res;
+        return 0;
+    }
+    if (strcmp(method, "padRight") == 0) {
+        int target_len = (arg_count > 0) ? args[0].int_val : 0;
+        const char *pad = (arg_count > 1 && args[1].string_val) ? args[1].string_val : " ";
+        char *res = string_pad_right(str, target_len, pad);
+        *out_type = VAR_STRING;
+        *out_str = res;
+        return 0;
+    }
+    if (strcmp(method, "trim") == 0) {
+        char *res = string_trim(str);
+        *out_type = VAR_STRING;
+        *out_str = res;
+        return 0;
+    }
+    if (strcmp(method, "toUpper") == 0) {
+        char *res = string_to_upper(str);
+        *out_type = VAR_STRING;
+        *out_str = res;
+        return 0;
+    }
+    if (strcmp(method, "toLower") == 0) {
+        char *res = string_to_lower(str);
+        *out_type = VAR_STRING;
+        *out_str = res;
+        return 0;
+    }
+    if (strcmp(method, "split") == 0) {
+        const char *sep = (arg_count > 0 && args[0].string_val) ? args[0].string_val : " ";
+        Array *res = string_split(str, sep);
+        *out_type = VAR_ARRAY;
+        if (out_arr) *out_arr = res;
+        current_reply.array_val = res;
+        *out_str = array_to_string(res);
+        return 0;
+    }
+
+    throw_error("SyntaxError", "Unknown String method '%s' on line %d", method, line_num);
+    return 0;
 }
 
 int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Array **out_arr, Entity **out_ent) {
@@ -1416,6 +2164,17 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
         *out_str = strdup(t.value);
         track_alloc(*out_str);
         *out_type = VAR_STRING;
+        Token peek = peekToken(cursor);
+        if (peek.type == TOKEN_DOT) {
+            freeToken(&peek);
+            Token dot = getNextToken(cursor); freeToken(&dot);
+            Token mem = getNextToken(cursor);
+            if (mem.type != TOKEN_IDENTIFIER) { freeToken(&mem); throw_error("SyntaxError", "Expected member name after '.' on line %d", current_executing_line); }
+            acc = dispatch_string_method(*out_str, mem.value, cursor, out_str, out_type, out_arr, out_ent, current_executing_line);
+            freeToken(&mem);
+        } else {
+            freeToken(&peek);
+        }
     } else if (t.type == TOKEN_LBRACKET) {
         // Array literal [item1, item2, ...]
         Array *arr = create_array();
@@ -1429,14 +2188,16 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
                 char *elem_str = NULL;
                 int elem_type = VAR_INT;
                 int elem_int = 0;
-                evaluate_argument(cursor, &elem_str, &elem_type, &elem_int);
+                Array *elem_arr = NULL;
+                Entity *elem_ent = NULL;
+                evaluate_argument(cursor, &elem_str, &elem_type, &elem_int, &elem_arr, &elem_ent);
                 Variable elem_var;
                 memset(&elem_var, 0, sizeof(elem_var));
                 elem_var.type = elem_type;
                 elem_var.int_val = elem_int;
                 elem_var.string_val = elem_str;
-                elem_var.array_val = current_reply.array_val;
-                elem_var.entity_val = current_reply.entity_val;
+                elem_var.array_val = elem_arr;
+                elem_var.entity_val = elem_ent;
                 array_append(arr, &elem_var);
 
                 Token sep = getNextToken(cursor);
@@ -1457,6 +2218,17 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
         current_reply.array_val = arr;
         *out_str = array_to_string(arr);
         acc = 0;
+        Token dot_peek = peekToken(cursor);
+        if (dot_peek.type == TOKEN_DOT) {
+            freeToken(&dot_peek);
+            Token dot = getNextToken(cursor); freeToken(&dot);
+            Token mem = getNextToken(cursor);
+            if (mem.type != TOKEN_IDENTIFIER) { freeToken(&mem); throw_error("SyntaxError", "Expected member name after '.' on line %d", current_executing_line); }
+            acc = dispatch_array_method(arr, mem.value, cursor, out_str, out_type, out_arr, out_ent, current_executing_line);
+            freeToken(&mem);
+        } else {
+            freeToken(&dot_peek);
+        }
     } else if (t.type == TOKEN_LPAREN) {
         Token peek = peekToken(cursor);
         Routine *r = NULL;
@@ -1467,6 +2239,8 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
             Token fn_tok = getNextToken(cursor);
             freeToken(&fn_tok);
             call_routine_val(r, cursor, out_str, out_type, &acc, current_executing_line);
+            if (out_arr && *out_type == VAR_ARRAY) *out_arr = current_reply.array_val;
+            if (out_ent && *out_type == VAR_ENTITY) *out_ent = current_reply.entity_val;
         } else {
             acc = evaluate_expression_val(cursor, out_str, out_type, out_arr, out_ent);
         }
@@ -1563,6 +2337,20 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
                 if (call_peek.type == TOKEN_LPAREN) {
                     freeToken(&call_peek);
                     Token lp = getNextToken(cursor); freeToken(&lp);
+                    // Check if class defined inside library
+                    ClassDef *cd = find_class(mem.value);
+                    if (cd) {
+                        Entity *ent = instantiate_entity(cd, cursor, current_executing_line);
+                        Token rp = getNextToken(cursor);
+                        if (rp.type != TOKEN_RPAREN) { freeToken(&rp); throw_error("SyntaxError", "Expected ')' after class instantiation on line %d", current_executing_line); }
+                        freeToken(&rp);
+                        *out_type = VAR_ENTITY;
+                        if (out_ent) *out_ent = ent;
+                        current_reply.entity_val = ent;
+                        *out_str = entity_to_string(ent);
+                        freeToken(&mem); freeToken(&t);
+                        return 0;
+                    }
                     Routine *r = NULL;
                     for (int i = 0; i < lib->routine_count; i++) {
                         if (strcmp(lib->routines[i].name, mem.value) == 0) { r = &lib->routines[i]; break; }
@@ -1604,8 +2392,52 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
                 }
             }
 
-            // Entity instance variable lookup
+            // Variable lookup (Array, String, Entity)
             Variable *ev = get_var(t.value);
+            if (ev && ev->type == VAR_ARRAY) {
+                acc = dispatch_array_method(ev->array_val, mem.value, cursor, out_str, out_type, out_arr, out_ent, current_executing_line);
+                freeToken(&mem); freeToken(&t);
+                while (1) {
+                    Token chain_dot = peekToken(cursor);
+                    if (chain_dot.type != TOKEN_DOT) { freeToken(&chain_dot); break; }
+                    freeToken(&chain_dot);
+                    Token d = getNextToken(cursor); freeToken(&d);
+                    Token nm = getNextToken(cursor);
+                    if (nm.type != TOKEN_IDENTIFIER) { freeToken(&nm); throw_error("SyntaxError", "Expected member name after '.' on line %d", current_executing_line); }
+                    if (*out_type == VAR_ARRAY && out_arr && *out_arr) {
+                        acc = dispatch_array_method(*out_arr, nm.value, cursor, out_str, out_type, out_arr, out_ent, current_executing_line);
+                    } else if (*out_type == VAR_STRING && *out_str) {
+                        acc = dispatch_string_method(*out_str, nm.value, cursor, out_str, out_type, out_arr, out_ent, current_executing_line);
+                    } else {
+                        freeToken(&nm);
+                        throw_error("SyntaxError", "Cannot call member '%s' on non-object on line %d", nm.value, current_executing_line);
+                    }
+                    freeToken(&nm);
+                }
+                return acc;
+            }
+            if (ev && ev->type == VAR_STRING) {
+                acc = dispatch_string_method(ev->string_val ? ev->string_val : "", mem.value, cursor, out_str, out_type, out_arr, out_ent, current_executing_line);
+                freeToken(&mem); freeToken(&t);
+                while (1) {
+                    Token chain_dot = peekToken(cursor);
+                    if (chain_dot.type != TOKEN_DOT) { freeToken(&chain_dot); break; }
+                    freeToken(&chain_dot);
+                    Token d = getNextToken(cursor); freeToken(&d);
+                    Token nm = getNextToken(cursor);
+                    if (nm.type != TOKEN_IDENTIFIER) { freeToken(&nm); throw_error("SyntaxError", "Expected member name after '.' on line %d", current_executing_line); }
+                    if (*out_type == VAR_ARRAY && out_arr && *out_arr) {
+                        acc = dispatch_array_method(*out_arr, nm.value, cursor, out_str, out_type, out_arr, out_ent, current_executing_line);
+                    } else if (*out_type == VAR_STRING && *out_str) {
+                        acc = dispatch_string_method(*out_str, nm.value, cursor, out_str, out_type, out_arr, out_ent, current_executing_line);
+                    } else {
+                        freeToken(&nm);
+                        throw_error("SyntaxError", "Cannot call member '%s' on non-object on line %d", nm.value, current_executing_line);
+                    }
+                    freeToken(&nm);
+                }
+                return acc;
+            }
             if (!ev || ev->type != VAR_ENTITY || !ev->entity_val) {
                 throw_error("UndefinedVariableError", "Variable '%s' is not an entity on line %d", t.value, current_executing_line);
             }
@@ -1671,11 +2503,190 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
                 throw_error("SyntaxError", "Cannot use method '%s' in an expression on line %d", r->name, current_executing_line);
             }
             call_routine_val(r, cursor, out_str, out_type, &acc, current_executing_line);
+            if (out_arr && *out_type == VAR_ARRAY) *out_arr = current_reply.array_val;
+            if (out_ent && *out_type == VAR_ENTITY) *out_ent = current_reply.entity_val;
             if (sign == -1) {
                 if (*out_type != VAR_INT && *out_type != VAR_BOOL) {
                     throw_error("InvalidOperandError", "Invalid operand for unary '-' on line %d", current_executing_line);
                 }
                 acc *= -1;
+            }
+        } else if (is_native_func_name(t.value)) {
+            Token call_peek = peekToken(cursor);
+            if (call_peek.type == TOKEN_LPAREN) {
+                freeToken(&call_peek);
+                Token lp = getNextToken(cursor); freeToken(&lp);
+                char *a1_str = NULL;
+                int a1_type = VAR_INT;
+                Array *a1_arr = NULL;
+                Entity *a1_ent = NULL;
+                int a1_int = 0;
+                Token pcheck = peekToken(cursor);
+                if (pcheck.type != TOKEN_RPAREN && pcheck.type != TOKEN_EOF) {
+                    freeToken(&pcheck);
+                    a1_int = evaluate_expression_val(cursor, &a1_str, &a1_type, &a1_arr, &a1_ent);
+                } else {
+                    freeToken(&pcheck);
+                }
+                (void)a1_int;
+
+                Variable extra_args[7];
+                int extra_count = 0;
+                memset(extra_args, 0, sizeof(extra_args));
+                while (extra_count < 7) {
+                    Token sep = peekToken(cursor);
+                    if (sep.type == TOKEN_COMMA) {
+                        freeToken(&sep);
+                        Token cm = getNextToken(cursor); freeToken(&cm);
+                        char *ea_str = NULL;
+                        int ea_type = VAR_INT;
+                        Array *ea_arr = NULL;
+                        Entity *ea_ent = NULL;
+                        int ea_int = evaluate_expression_val(cursor, &ea_str, &ea_type, &ea_arr, &ea_ent);
+                        extra_args[extra_count].type = ea_type;
+                        extra_args[extra_count].int_val = ea_int;
+                        extra_args[extra_count].string_val = ea_str;
+                        extra_args[extra_count].array_val = ea_arr ? ea_arr : current_reply.array_val;
+                        extra_args[extra_count].entity_val = ea_ent ? ea_ent : current_reply.entity_val;
+                        extra_count++;
+                    } else {
+                        freeToken(&sep);
+                        break;
+                    }
+                }
+                Token rp = getNextToken(cursor);
+                if (rp.type != TOKEN_RPAREN) { freeToken(&rp); throw_error("SyntaxError", "Expected ')' on line %d", current_executing_line); }
+                freeToken(&rp);
+
+                if (a1_type == VAR_ARRAY && (a1_arr || current_reply.array_val)) {
+                    Array *target_arr = a1_arr ? a1_arr : current_reply.array_val;
+                    if (strcmp(t.value, "len") == 0 || strcmp(t.value, "length") == 0) {
+                        *out_type = VAR_INT;
+                        acc = array_len(target_arr);
+                    } else if (strcmp(t.value, "isEmpty") == 0) {
+                        *out_type = VAR_BOOL;
+                        acc = array_is_empty(target_arr);
+                    } else if (strcmp(t.value, "indexOf") == 0) {
+                        *out_type = VAR_INT;
+                        acc = (extra_count > 0) ? array_index_of(target_arr, &extra_args[0]) : -1;
+                    } else if (strcmp(t.value, "contains") == 0) {
+                        *out_type = VAR_BOOL;
+                        acc = (extra_count > 0) ? array_contains(target_arr, &extra_args[0]) : 0;
+                    } else if (strcmp(t.value, "slice") == 0) {
+                        int st = (extra_count > 0) ? extra_args[0].int_val : 0;
+                        int en = (extra_count > 1) ? extra_args[1].int_val : target_arr->count;
+                        Array *sl = array_slice(target_arr, st, en);
+                        *out_type = VAR_ARRAY; if (out_arr) *out_arr = sl; current_reply.array_val = sl; *out_str = array_to_string(sl);
+                        acc = 0;
+                    } else if (strcmp(t.value, "reverse") == 0) {
+                        array_reverse(target_arr);
+                        *out_type = VAR_ARRAY; if (out_arr) *out_arr = target_arr; current_reply.array_val = target_arr; *out_str = array_to_string(target_arr);
+                        acc = 0;
+                    } else if (strcmp(t.value, "join") == 0) {
+                        const char *sep = (extra_count > 0 && extra_args[0].string_val) ? extra_args[0].string_val : "";
+                        *out_str = array_join(target_arr, sep);
+                        *out_type = VAR_STRING;
+                        acc = 0;
+                    } else {
+                        throw_error("SyntaxError", "Invalid array function '%s' on line %d", t.value, current_executing_line);
+                    }
+                } else if (a1_type == VAR_STRING || a1_str != NULL) {
+                    const char *target_str = a1_str ? a1_str : "";
+                    if (strcmp(t.value, "len") == 0 || strcmp(t.value, "length") == 0) {
+                        *out_type = VAR_INT;
+                        acc = string_len(target_str);
+                    } else if (strcmp(t.value, "isEmpty") == 0) {
+                        *out_type = VAR_BOOL;
+                        acc = string_is_empty(target_str);
+                    } else if (strcmp(t.value, "indexOf") == 0) {
+                        *out_type = VAR_INT;
+                        const char *sub = (extra_count > 0 && extra_args[0].string_val) ? extra_args[0].string_val : "";
+                        acc = string_index_of(target_str, sub);
+                    } else if (strcmp(t.value, "contains") == 0) {
+                        *out_type = VAR_BOOL;
+                        const char *sub = (extra_count > 0 && extra_args[0].string_val) ? extra_args[0].string_val : "";
+                        acc = string_contains(target_str, sub);
+                    } else if (strcmp(t.value, "slice") == 0) {
+                        int st = (extra_count > 0) ? extra_args[0].int_val : 0;
+                        int en = (extra_count > 1) ? extra_args[1].int_val : (int)strlen(target_str);
+                        *out_str = string_slice(target_str, st, en);
+                        *out_type = VAR_STRING;
+                        acc = 0;
+                    } else if (strcmp(t.value, "trim") == 0) {
+                        *out_str = string_trim(target_str);
+                        *out_type = VAR_STRING;
+                        acc = 0;
+                    } else if (strcmp(t.value, "toUpper") == 0) {
+                        *out_str = string_to_upper(target_str);
+                        *out_type = VAR_STRING;
+                        acc = 0;
+                    } else if (strcmp(t.value, "toLower") == 0) {
+                        *out_str = string_to_lower(target_str);
+                        *out_type = VAR_STRING;
+                        acc = 0;
+                    } else if (strcmp(t.value, "split") == 0) {
+                        const char *sep = (extra_count > 0 && extra_args[0].string_val) ? extra_args[0].string_val : " ";
+                        Array *sp = string_split(target_str, sep);
+                        *out_type = VAR_ARRAY; if (out_arr) *out_arr = sp; current_reply.array_val = sp; *out_str = array_to_string(sp);
+                        acc = 0;
+                    } else if (strcmp(t.value, "repeat") == 0) {
+                        int cnt = (extra_count > 0) ? extra_args[0].int_val : 1;
+                        *out_str = string_repeat(target_str, cnt);
+                        *out_type = VAR_STRING;
+                        acc = 0;
+                    } else if (strcmp(t.value, "padLeft") == 0) {
+                        int tl = (extra_count > 0) ? extra_args[0].int_val : 0;
+                        const char *pad = (extra_count > 1 && extra_args[1].string_val) ? extra_args[1].string_val : " ";
+                        *out_str = string_pad_left(target_str, tl, pad);
+                        *out_type = VAR_STRING;
+                        acc = 0;
+                    } else if (strcmp(t.value, "padRight") == 0) {
+                        int tl = (extra_count > 0) ? extra_args[0].int_val : 0;
+                        const char *pad = (extra_count > 1 && extra_args[1].string_val) ? extra_args[1].string_val : " ";
+                        *out_str = string_pad_right(target_str, tl, pad);
+                        *out_type = VAR_STRING;
+                        acc = 0;
+                    } else {
+                        throw_error("SyntaxError", "Invalid string function '%s' on line %d", t.value, current_executing_line);
+                    }
+                } else {
+                    if (strcmp(t.value, "len") == 0 || strcmp(t.value, "length") == 0) {
+                        *out_type = VAR_INT;
+                        acc = 0;
+                    } else {
+                        throw_error("SyntaxError", "Expected Array or String argument for '%s' on line %d", t.value, current_executing_line);
+                    }
+                }
+                freeToken(&t);
+                return acc;
+            } else {
+                freeToken(&call_peek);
+                Variable *v = get_var(t.value);
+                if (v) {
+                    if (v->type == VAR_INT) acc = v->int_val * sign;
+                    else if (v->type == VAR_BOOL) {
+                        if (sign == -1) throw_error("InvalidOperandError", "Invalid operand for unary '-' on line %d", current_executing_line);
+                        acc = v->int_val;
+                        *out_type = VAR_BOOL;
+                    } else if (v->type == VAR_STRING) {
+                        if (sign == -1) throw_error("InvalidOperandError", "Invalid operand for unary '-' on line %d", current_executing_line);
+                        *out_str = strdup(v->string_val ? v->string_val : "");
+                        track_alloc(*out_str);
+                        *out_type = VAR_STRING;
+                    } else if (v->type == VAR_ARRAY) {
+                        *out_type = VAR_ARRAY;
+                        if (out_arr) *out_arr = v->array_val;
+                        current_reply.array_val = v->array_val;
+                        *out_str = array_to_string(v->array_val);
+                    } else if (v->type == VAR_ENTITY) {
+                        *out_type = VAR_ENTITY;
+                        if (out_ent) *out_ent = v->entity_val;
+                        current_reply.entity_val = v->entity_val;
+                        *out_str = entity_to_string(v->entity_val);
+                    }
+                } else {
+                    throw_error("UndefinedVariableError", "Undefined variable '%s' on line %d", t.value, current_executing_line);
+                }
             }
         } else {
             Variable *v = get_var(t.value);
@@ -1708,6 +2719,32 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
     } else {
         throw_error("SyntaxError", "Expected value in expression on line %d", current_executing_line);
     }
+
+    // Handle method chaining if followed by .method(...)
+    while (1) {
+        Token chain_dot = peekToken(cursor);
+        if (chain_dot.type != TOKEN_DOT) {
+            freeToken(&chain_dot);
+            break;
+        }
+        freeToken(&chain_dot);
+        Token dot = getNextToken(cursor); freeToken(&dot);
+        Token next_mem = getNextToken(cursor);
+        if (next_mem.type != TOKEN_IDENTIFIER) {
+            freeToken(&next_mem);
+            throw_error("SyntaxError", "Expected member name after '.' on line %d", current_executing_line);
+        }
+        if (*out_type == VAR_ARRAY && out_arr && *out_arr) {
+            acc = dispatch_array_method(*out_arr, next_mem.value, cursor, out_str, out_type, out_arr, out_ent, current_executing_line);
+        } else if (*out_type == VAR_STRING && *out_str) {
+            acc = dispatch_string_method(*out_str, next_mem.value, cursor, out_str, out_type, out_arr, out_ent, current_executing_line);
+        } else {
+            freeToken(&next_mem);
+            throw_error("SyntaxError", "Cannot call member '%s' on non-object on line %d", next_mem.value, current_executing_line);
+        }
+        freeToken(&next_mem);
+    }
+
     freeToken(&t);
     return acc;
 }
@@ -2176,22 +3213,26 @@ void execute_line(const char *text, int line_num) {
             freeToken(&colon);
             char *out_str = NULL;
             int out_type = VAR_INT;
-            int val = evaluate_expression(&cursor, &out_str, &out_type);
+            Array *out_arr = NULL;
+            Entity *out_ent = NULL;
+            int val = evaluate_expression_val(&cursor, &out_str, &out_type, &out_arr, &out_ent);
             Variable *v = set_var_scoped(var_tok.value, line_num);
-            if (out_str) {
-                v->type = VAR_STRING;
+            v->type = out_type;
+            if (out_type == VAR_ARRAY) {
+                v->array_val = out_arr ? out_arr : current_reply.array_val;
+            } else if (out_type == VAR_ENTITY) {
+                v->entity_val = out_ent ? out_ent : current_reply.entity_val;
+            } else if (out_str) {
                 if (v->string_val) free(v->string_val);
                 untrack_alloc(out_str);
                 v->string_val = out_str;
             } else if (out_type == VAR_BOOL) {
-                v->type = VAR_BOOL;
                 v->int_val = val;
                 if (v->string_val) {
                     free(v->string_val);
                     v->string_val = NULL;
                 }
             } else {
-                v->type = VAR_INT;
                 v->int_val = val;
                 if (v->string_val) {
                     free(v->string_val);
@@ -2213,15 +3254,19 @@ void execute_line(const char *text, int line_num) {
                 }
                 char *out_str = NULL;
                 int out_type = VAR_INT;
-                int val = evaluate_expression(&cursor, &out_str, &out_type);
+                Array *out_arr = NULL;
+                Entity *out_ent = NULL;
+                int val = evaluate_expression_val(&cursor, &out_str, &out_type, &out_arr, &out_ent);
                 current_reply.has_replied = 1;
                 current_reply.type = out_type;
                 current_reply.int_val = val;
+                current_reply.array_val = out_arr ? out_arr : current_reply.array_val;
+                current_reply.entity_val = out_ent ? out_ent : current_reply.entity_val;
                 if (current_reply.string_val) {
                     free(current_reply.string_val);
                     current_reply.string_val = NULL;
                 }
-                if (out_str) {
+                if (out_str && out_type == VAR_STRING) {
                     untrack_alloc(out_str);
                     current_reply.string_val = out_str;
                 }
@@ -2230,10 +3275,6 @@ void execute_line(const char *text, int line_num) {
                 current_reply.has_replied = 1;
                 current_reply.type = VAR_INT;
                 current_reply.int_val = 0;
-                if (current_reply.string_val) {
-                    free(current_reply.string_val);
-                    current_reply.string_val = NULL;
-                }
             }
         }
         else if (t.type == TOKEN_ARR) {
@@ -2277,6 +3318,33 @@ void execute_line(const char *text, int line_num) {
             continue;
         }
         else if (t.type == TOKEN_PUBLIC) {
+            continue;
+        }
+        else if (t.type == TOKEN_LOAD) {
+            Token target_tok = getNextToken(&cursor);
+            if (target_tok.type != TOKEN_IDENTIFIER && target_tok.type != TOKEN_STRING) {
+                freeToken(&target_tok);
+                throw_error("SyntaxError", "Expected library name or path after 'load' on line %d", line_num);
+            }
+            char full_path[256];
+            strncpy(full_path, target_tok.value ? target_tok.value : "", sizeof(full_path) - 1);
+            full_path[sizeof(full_path) - 1] = '\0';
+            Token next_p = peekToken(&cursor);
+            while (next_p.type == TOKEN_DOT || next_p.type == TOKEN_SLASH) {
+                freeToken(&next_p);
+                Token sym = getNextToken(&cursor);
+                strncat(full_path, sym.value ? sym.value : (sym.type == TOKEN_DOT ? "." : "/"), sizeof(full_path) - strlen(full_path) - 1);
+                freeToken(&sym);
+                Token part = getNextToken(&cursor);
+                if (part.value) {
+                    strncat(full_path, part.value, sizeof(full_path) - strlen(full_path) - 1);
+                }
+                freeToken(&part);
+                next_p = peekToken(&cursor);
+            }
+            freeToken(&next_p);
+            load_library(full_path, line_num);
+            freeToken(&target_tok);
             continue;
         }
         else if (t.type == TOKEN_IDENTIFIER) {
@@ -2415,10 +3483,10 @@ void execute_line(const char *text, int line_num) {
                         }
                     }
                 } else if (after_mem.type == TOKEN_LPAREN) {
-                    freeToken(&after_mem);
-                    Token lp = getNextToken(&cursor); freeToken(&lp);
                     LibraryDef *lib = find_library(t.value);
                     if (lib) {
+                        freeToken(&after_mem);
+                        Token lp = getNextToken(&cursor); freeToken(&lp);
                         Routine *r = NULL;
                         for (int k = 0; k < lib->routine_count; k++) {
                             if (strcmp(lib->routines[k].name, mem.value) == 0) { r = &lib->routines[k]; break; }
@@ -2430,19 +3498,41 @@ void execute_line(const char *text, int line_num) {
                         freeToken(&rp);
                     } else {
                         Variable *ev = get_var(t.value);
-                        if (!ev || ev->type != VAR_ENTITY || !ev->entity_val) {
-                            throw_error("UndefinedVariableError", "Variable '%s' is not an entity on line %d", t.value, line_num);
+                        if (ev && ev->type == VAR_ARRAY) {
+                            freeToken(&after_mem);
+                            char *m_str = NULL;
+                            int m_type = VAR_INT;
+                            Array *m_arr = NULL;
+                            Entity *m_ent = NULL;
+                            dispatch_array_method(ev->array_val, mem.value, &cursor, &m_str, &m_type, &m_arr, &m_ent, line_num);
+                            freeToken(&mem);
+                            continue;
+                        } else if (ev && ev->type == VAR_STRING) {
+                            freeToken(&after_mem);
+                            char *m_str = NULL;
+                            int m_type = VAR_INT;
+                            Array *m_arr = NULL;
+                            Entity *m_ent = NULL;
+                            dispatch_string_method(ev->string_val ? ev->string_val : "", mem.value, &cursor, &m_str, &m_type, &m_arr, &m_ent, line_num);
+                            freeToken(&mem);
+                            continue;
+                        } else if (ev && ev->type == VAR_ENTITY && ev->entity_val) {
+                            freeToken(&after_mem);
+                            Token lp = getNextToken(&cursor); freeToken(&lp);
+                            Entity *ent = ev->entity_val;
+                            Routine *m = NULL;
+                            for (int k = 0; k < ent->method_count; k++) {
+                                if (strcmp(ent->methods[k].name, mem.value) == 0) { m = &ent->methods[k]; break; }
+                            }
+                            if (!m) throw_error("EntityError", "Entity '%s' has no method '%s' on line %d", ent->class_name, mem.value, line_num);
+                            call_routine(m, &cursor, line_num);
+                            Token rp = getNextToken(&cursor);
+                            if (rp.type != TOKEN_RPAREN) { freeToken(&rp); throw_error("SyntaxError", "Expected ')' on line %d", line_num); }
+                            freeToken(&rp);
+                        } else {
+                            freeToken(&after_mem);
+                            throw_error("UndefinedVariableError", "Variable '%s' is not an entity or object on line %d", t.value, line_num);
                         }
-                        Entity *ent = ev->entity_val;
-                        Routine *m = NULL;
-                        for (int k = 0; k < ent->method_count; k++) {
-                            if (strcmp(ent->methods[k].name, mem.value) == 0) { m = &ent->methods[k]; break; }
-                        }
-                        if (!m) throw_error("EntityError", "Entity '%s' has no method '%s' on line %d", ent->class_name, mem.value, line_num);
-                        call_routine(m, &cursor, line_num);
-                        Token rp = getNextToken(&cursor);
-                        if (rp.type != TOKEN_RPAREN) { freeToken(&rp); throw_error("SyntaxError", "Expected ')' on line %d", line_num); }
-                        freeToken(&rp);
                     }
                 } else {
                     freeToken(&after_mem);
@@ -2638,6 +3728,63 @@ void execute_block(int start, int end) {
                         cur_sec = 1;
                     } else if (strcmp(ln->text, "dynamic:") == 0 || strncmp(ln->text, "dynamic:", 8) == 0) {
                         cur_sec = 2;
+                    } else if (strncmp(ln->text, "class ", 6) == 0 || strncmp(ln->text, "class(", 6) == 0) {
+                        int c_start = idx + 1;
+                        int c_end = idx;
+                        while (c_end + 1 <= block_end) {
+                            Line *next = &lines[c_end + 1];
+                            if (next->text[0] == '\0' || next->text[0] == '!') { c_end++; continue; }
+                            if (next->indent > ln->indent) c_end++;
+                            else break;
+                        }
+                        if (class_count >= MAX_CLASSES) throw_error("SystemError", "Max classes exceeded on line %d", ln->line_num);
+                        ClassDef *cd = &classes[class_count++];
+                        memset(cd, 0, sizeof(ClassDef));
+                        cd->static_start_line = 1;
+                        cd->static_end_line = 0;
+                        cd->dynamic_start_line = 1;
+                        cd->dynamic_end_line = 0;
+
+                        const char *clc = ln->text + 5;
+                        while (isspace((unsigned char)*clc)) clc++;
+                        const char *cname_start = clc;
+                        while (isalnum((unsigned char)*clc) || *clc == '_') clc++;
+                        int cnlen = clc - cname_start;
+                        if (cnlen > 63) cnlen = 63;
+                        strncpy(cd->name, cname_start, cnlen);
+                        while (isspace((unsigned char)*clc)) clc++;
+                        if (*clc == '(') {
+                            clc++;
+                            while (*clc != '\0' && *clc != ')' && cd->param_count < 16) {
+                                while (isspace((unsigned char)*clc) || *clc == ',') clc++;
+                                if (*clc == ')' || *clc == '\0') break;
+                                const char *p_start = clc;
+                                while (isalnum((unsigned char)*clc) || *clc == '_') clc++;
+                                int plen = clc - p_start;
+                                if (plen > 63) plen = 63;
+                                strncpy(cd->params[cd->param_count++], p_start, plen);
+                            }
+                        }
+
+                        int c_section = 0; // 1 = static, 2 = dynamic
+                        for (int c_idx = c_start; c_idx <= c_end; c_idx++) {
+                            Line *cln = &lines[c_idx];
+                            if (cln->text[0] == '\0' || cln->text[0] == '!') continue;
+                            if (strcmp(cln->text, "static:") == 0 || strncmp(cln->text, "static:", 7) == 0) {
+                                c_section = 1;
+                                cd->static_start_line = c_idx + 1;
+                                cd->static_end_line = c_idx;
+                            } else if (strcmp(cln->text, "dynamic:") == 0 || strncmp(cln->text, "dynamic:", 8) == 0) {
+                                c_section = 2;
+                                cd->dynamic_start_line = c_idx + 1;
+                                cd->dynamic_end_line = c_idx;
+                            } else {
+                                if (c_section == 1) cd->static_end_line = c_idx;
+                                else if (c_section == 2) cd->dynamic_end_line = c_idx;
+                            }
+                        }
+                        idx = c_end;
+                        continue;
                     } else {
                         const char *c = ln->text;
                         int is_priv = 0;
@@ -2682,18 +3829,21 @@ void execute_block(int start, int end) {
                             Token rname = getNextToken(&c);
                             if (rname.type == TOKEN_IDENTIFIER) strncpy(lr->name, rname.value, 63);
                             freeToken(&rname);
-                            Token lp = getNextToken(&c);
-                            if (lp.type == TOKEN_LPAREN) {
-                                freeToken(&lp);
-                                while (1) {
-                                    Token ptok = getNextToken(&c);
-                                    if (ptok.type == TOKEN_IDENTIFIER && lr->param_count < 16) {
-                                        strncpy(lr->params[lr->param_count++], ptok.value, 63);
-                                    }
-                                    if (ptok.type == TOKEN_RPAREN || ptok.type == TOKEN_EOF) { freeToken(&ptok); break; }
+                            while (1) {
+                                Token ptok = getNextToken(&c);
+                                if (ptok.type == TOKEN_EOF || ptok.type == TOKEN_RPAREN) {
                                     freeToken(&ptok);
+                                    break;
                                 }
-                            } else { freeToken(&lp); }
+                                if (ptok.type == TOKEN_LPAREN || ptok.type == TOKEN_COMMA) {
+                                    freeToken(&ptok);
+                                    continue;
+                                }
+                                if (ptok.type == TOKEN_IDENTIFIER && lr->param_count < 16) {
+                                    strncpy(lr->params[lr->param_count++], ptok.value, 63);
+                                }
+                                freeToken(&ptok);
+                            }
                             idx = meth_end;
                         } else {
                             freeToken(&def_tok);
@@ -3615,6 +4765,85 @@ void execute_block(int start, int end) {
     suppress_jmp_active = prev_suppress_active;
     memcpy(suppress_jmp_env, prev_suppress_env, sizeof(jmp_buf));
     }
+}
+
+static char loaded_libraries[64][128];
+static int loaded_library_count = 0;
+
+int is_library_loaded(const char *name) {
+    for (int i = 0; i < loaded_library_count; i++) {
+        if (strcmp(loaded_libraries[i], name) == 0) return 1;
+    }
+    return 0;
+}
+
+void mark_library_loaded(const char *name) {
+    if (loaded_library_count < 64) {
+        strncpy(loaded_libraries[loaded_library_count++], name, 127);
+    }
+}
+
+void load_library_source(const char *source, const char *origin_name, int line_num) {
+    (void)origin_name;
+    (void)line_num;
+    int start_idx = line_count;
+    parse_lines(source);
+    if (line_count > start_idx) {
+        execute_block(start_idx, line_count - 1);
+    }
+}
+
+void load_library(const char *target, int line_num) {
+    if (!target || target[0] == '\0') {
+        throw_error("FileError", "Invalid library name on line %d", line_num);
+    }
+    if (is_library_loaded(target)) {
+        return;
+    }
+
+    const char *embedded = get_embedded_core_lib(target);
+
+    char candidates[4][256];
+    int cand_count = 0;
+
+    snprintf(candidates[cand_count++], sizeof(candidates[0]), "%s", target);
+    snprintf(candidates[cand_count++], sizeof(candidates[0]), "%s.lib.vrs", target);
+    snprintf(candidates[cand_count++], sizeof(candidates[0]), "core_libs/%s.lib.vrs", target);
+    snprintf(candidates[cand_count++], sizeof(candidates[0]), "%s.vrs", target);
+
+    FILE *f = NULL;
+    for (int i = 0; i < cand_count; i++) {
+        f = fopen(candidates[i], "rb");
+        if (f) break;
+    }
+
+    if (f) {
+        fseek(f, 0, SEEK_END);
+        long len = ftell(f);
+        if (len < 0) len = 0;
+        fseek(f, 0, SEEK_SET);
+        char *buf = malloc(len + 1);
+        if (!buf) {
+            fclose(f);
+            throw_error("MemoryAllocationError", "Memory allocation failed loading library '%s' on line %d", target, line_num);
+        }
+        size_t read_bytes = fread(buf, 1, len, f);
+        buf[read_bytes] = '\0';
+        fclose(f);
+
+        load_library_source(buf, target, line_num);
+        free(buf);
+        mark_library_loaded(target);
+        return;
+    }
+
+    if (embedded) {
+        load_library_source(embedded, target, line_num);
+        mark_library_loaded(target);
+        return;
+    }
+
+    throw_error("FileError", "Cannot load library '%s': file not found on line %d", target, line_num);
 }
 
 int main(int argc, char *argv[]) {

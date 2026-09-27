@@ -1,0 +1,107 @@
+! Test Suite: Native Array & String Operations (camelCase) and Library Loading
+display "=== Testing Native String Operations ===" ?color=#38bdf8
+
+set s: "  Hello World  "
+display "Original string: '" + s + "'"
+
+set trimmed: s.trim()
+display "Trimmed: '" + trimmed + "'"
+
+set upper: trimmed.toUpper()
+display "toUpper: " + upper
+
+set lower: upper.toLower()
+display "toLower: " + lower
+
+set sl: trimmed.slice(0, 5)
+display "Slice (0, 5): " + sl
+
+set slen: trimmed.len()
+display "Length: " + slen
+
+set hasWorld: trimmed.contains("World")
+display "Contains 'World': " + hasWorld
+
+set idxWorld: trimmed.indexOf("World")
+display "IndexOf 'World': " + idxWorld
+
+set padded: sl.padLeft(8, "*")
+display "padLeft: " + padded
+
+set rep: sl.repeat(2)
+display "repeat: " + rep
+
+set words: trimmed.split(" ")
+display "split by space count: " + words.len()
+display "first word: " + words[0]
+display "second word: " + words[1]
+
+display "=== Testing Native Array Operations ===" ?color=#38bdf8
+
+set myArr: [10, 20, 30]
+display "Initial myArr len: " + myArr.len()
+
+myArr.push(40)
+display "After push(40) len: " + myArr.len()
+display "Element at 3: " + myArr[3]
+
+set popped: myArr.pop()
+display "Popped element: " + popped
+display "After pop len: " + myArr.len()
+
+set has20: myArr.contains(20)
+display "Contains 20: " + has20
+
+set idx30: myArr.indexOf(30)
+display "IndexOf 30: " + idx30
+
+set subArr: myArr.slice(1, 3)
+display "Slice(1, 3) len: " + subArr.len()
+display "Slice elements: " + subArr[0] + ", " + subArr[1]
+
+myArr.swap(0, 2)
+display "After swap(0, 2): " + myArr[0] + ", " + myArr[1] + ", " + myArr[2]
+
+set joined: myArr.join(" - ")
+display "Joined: " + joined
+
+myArr.reverse()
+display "After reverse: " + myArr[0] + ", " + myArr[1] + ", " + myArr[2]
+
+myArr.clear()
+display "After clear isEmpty: " + myArr.isEmpty()
+
+display "=== Testing Load Core Library: Math ===" ?color=#38bdf8
+load Math
+
+set absVal: Math.abs(-42)
+display "Math.abs(-42): " + absVal
+
+set minVal: Math.min(10, 20)
+display "Math.min(10, 20): " + minVal
+
+set maxVal: Math.max(10, 20)
+display "Math.max(10, 20): " + maxVal
+
+set clampVal: Math.clamp(50, 0, 30)
+display "Math.clamp(50, 0, 30): " + clampVal
+
+set gcdVal: Math.gcd(24, 36)
+display "Math.gcd(24, 36): " + gcdVal
+
+set lcmVal: Math.lcm(12, 18)
+display "Math.lcm(12, 18): " + lcmVal
+
+set powVal: Math.pow(2, 5)
+display "Math.pow(2, 5): " + powVal
+
+display "=== Testing Load User Library: custom.lib.vrs ===" ?color=#38bdf8
+load "./tests/custom.lib.vrs"
+
+set prod: CustomLib.multiply(6, 7)
+display "CustomLib.multiply(6, 7): " + prod
+
+set greeting: CustomLib.greet("VerScript")
+display "CustomLib.greet: " + greeting
+
+display "=== All tests completed successfully! ===" ?color=#22c55e
