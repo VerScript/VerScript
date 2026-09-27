@@ -14,6 +14,20 @@ struct Routine;
 struct Entity;
 struct LibraryDef;
 
+typedef struct MetadataStore {
+    struct Variable *static_vars;
+    int static_count;
+    int static_capacity;
+    struct Variable *dynamic_vars;
+    int dynamic_count;
+    int dynamic_capacity;
+    struct Variable *thisstatic_vars;
+    int thisstatic_count;
+    int thisstatic_capacity;
+    int override_all;
+    int override_static;
+} MetadataStore;
+
 typedef struct Array {
     struct Variable *items;
     int count;
@@ -32,6 +46,7 @@ typedef struct Entity {
     struct Routine *methods;
     int method_count;
     int method_capacity;
+    MetadataStore meta;
 } Entity;
 
 typedef struct Variable {
@@ -52,6 +67,7 @@ typedef struct ClassDef {
     int static_end_line;
     int dynamic_start_line;
     int dynamic_end_line;
+    MetadataStore meta;
 } ClassDef;
 
 #define MAX_CLASSES 64
@@ -69,6 +85,7 @@ typedef struct LibraryDef {
     struct Routine *routines;
     int routine_count;
     int routine_capacity;
+    MetadataStore meta;
 } LibraryDef;
 
 #define MAX_LIBRARIES 64
@@ -1039,8 +1056,92 @@ static const char *CORE_LIB_MATH =
     "      set prod: a * b\n"
     "      reply (abs prod) / g\n";
 
+static const char *CORE_LIB_STATS =
+    "lib Stats\n"
+    "  meta:\n"
+    "    static:\n"
+    "      category: \"Statistics\"\n"
+    "      version: \"1.0.0\"\n"
+    "  dynamic:\n"
+    "    def func sum values\n"
+    "      if values.length() = 0 then\n"
+    "        reply 0\n"
+    "      set total: 0\n"
+    "      iterate i from 0 to values.length() - 1\n"
+    "        set total: total + values[i]\n"
+    "      reply total\n"
+    "    def func mean values\n"
+    "      if values.length() = 0 then\n"
+    "        reply 0\n"
+    "      set s: (sum values)\n"
+    "      reply s / values.length()\n"
+    "    def func minMax values\n"
+    "      if values.length() = 0 then\n"
+    "        reply [0, 0]\n"
+    "      set curMin: values[0]\n"
+    "      set curMax: values[0]\n"
+    "      if values.length() > 1 then\n"
+    "        iterate i from 1 to values.length() - 1\n"
+    "          set x: values[i]\n"
+    "          if x < curMin then\n"
+    "            set curMin: x\n"
+    "          if x > curMax then\n"
+    "            set curMax: x\n"
+    "      reply [curMin, curMax]\n"
+    "    def func range values\n"
+    "      set mm: (minMax values)\n"
+    "      reply mm[1] - mm[0]\n";
+
+static const char *CORE_LIB_LOGIC =
+    "lib Logic\n"
+    "  meta:\n"
+    "    static:\n"
+    "      category: \"Boolean Logic\"\n"
+    "      version: \"1.0.0\"\n"
+    "  dynamic:\n"
+    "    def func xor a b\n"
+    "      reply a != b\n"
+    "    def func equiv a b\n"
+    "      reply a = b\n"
+    "    def func notVal a\n"
+    "      reply a = false\n"
+    "    def func andVal a b\n"
+    "      if a = true then\n"
+    "        if b = true then\n"
+    "          reply true\n"
+    "      reply false\n"
+    "    def func orVal a b\n"
+    "      if a = true then\n"
+    "        reply true\n"
+    "      if b = true then\n"
+    "        reply true\n"
+    "      reply false\n";
+
+static const char *CORE_LIB_ASSERT =
+    "lib Assert\n"
+    "  meta:\n"
+    "    static:\n"
+    "      category: \"Testing & Verification\"\n"
+    "      version: \"1.0.0\"\n"
+    "  dynamic:\n"
+    "    def method equal actual expected message\n"
+    "      if actual != expected then\n"
+    "        throw \"AssertionError: \" + message\n"
+    "    def method notEqual actual expected message\n"
+    "      if actual = expected then\n"
+    "        throw \"AssertionError: \" + message\n"
+    "    def method isTrue condition message\n"
+    "      if not condition then\n"
+    "        throw \"AssertionError: \" + message\n"
+    "    def method isFalse condition message\n"
+    "      if condition then\n"
+    "        throw \"AssertionError: \" + message\n";
+
 const char* get_embedded_core_lib(const char *name) {
     if (strcmp(name, "Math") == 0) return CORE_LIB_MATH;
+    if (strcmp(name, "Stats") == 0) return CORE_LIB_STATS;
+    if (strcmp(name, "Logic") == 0) return CORE_LIB_LOGIC;
+    if (strcmp(name, "Assert") == 0) return CORE_LIB_ASSERT;
     return NULL;
 }
 
@@ -1300,6 +1401,138 @@ int evaluate_expression_val(const char **cursor, char **out_str, int *out_type, 
 int dispatch_array_method(Array *arr, const char *method, const char **cursor, char **out_str, int *out_type, Array **out_arr, Entity **out_ent, int line_num);
 int dispatch_string_method(const char *str, const char *method, const char **cursor, char **out_str, int *out_type, Array **out_arr, Entity **out_ent, int line_num);
 int is_native_func_name(const char *name);
+
+MetadataStore* get_current_metadata_store(void) {
+    if (current_entity) return &current_entity->meta;
+    if (current_library) return &current_library->meta;
+    return NULL;
+}
+
+void add_metadata_var(Variable **vars, int *count, int *capacity, const char *key, VarType type, int ival, const char *sval, Array *arr, Entity *ent) {
+    for (int i = 0; i < *count; i++) {
+        if (strcmp((*vars)[i].name, key) == 0) {
+            (*vars)[i].type = type;
+            (*vars)[i].int_val = ival;
+            if ((*vars)[i].string_val) {
+                untrack_alloc((*vars)[i].string_val);
+                free((*vars)[i].string_val);
+            }
+            (*vars)[i].string_val = sval ? strdup(sval) : NULL;
+            if ((*vars)[i].string_val) track_alloc((*vars)[i].string_val);
+            (*vars)[i].array_val = arr;
+            (*vars)[i].entity_val = ent;
+            return;
+        }
+    }
+    if (*count >= *capacity) {
+        int new_cap = (*capacity == 0) ? 8 : (*capacity * 2);
+        if (*vars) untrack_alloc((char*)*vars);
+        Variable *tmp = realloc(*vars, new_cap * sizeof(Variable));
+        if (!tmp) throw_error("MemoryAllocationError", "Memory allocation failed for metadata");
+        *vars = tmp;
+        track_alloc((char*)*vars);
+        *capacity = new_cap;
+    }
+    Variable *nv = &(*vars)[(*count)++];
+    memset(nv, 0, sizeof(Variable));
+    nv->name = strdup(key);
+    track_alloc(nv->name);
+    nv->type = type;
+    nv->int_val = ival;
+    nv->string_val = sval ? strdup(sval) : NULL;
+    if (nv->string_val) track_alloc(nv->string_val);
+    nv->array_val = arr;
+    nv->entity_val = ent;
+}
+
+void clone_metadata_store(MetadataStore *src, MetadataStore *dst) {
+    memset(dst, 0, sizeof(MetadataStore));
+    dst->override_all = src->override_all;
+    dst->override_static = src->override_static;
+    for (int i = 0; i < src->static_count; i++) {
+        add_metadata_var(&dst->static_vars, &dst->static_count, &dst->static_capacity,
+                         src->static_vars[i].name, src->static_vars[i].type, src->static_vars[i].int_val,
+                         src->static_vars[i].string_val, src->static_vars[i].array_val, src->static_vars[i].entity_val);
+    }
+    for (int i = 0; i < src->dynamic_count; i++) {
+        add_metadata_var(&dst->dynamic_vars, &dst->dynamic_count, &dst->dynamic_capacity,
+                         src->dynamic_vars[i].name, src->dynamic_vars[i].type, src->dynamic_vars[i].int_val,
+                         src->dynamic_vars[i].string_val, src->dynamic_vars[i].array_val, src->dynamic_vars[i].entity_val);
+    }
+    for (int i = 0; i < src->thisstatic_count; i++) {
+        add_metadata_var(&dst->thisstatic_vars, &dst->thisstatic_count, &dst->thisstatic_capacity,
+                         src->thisstatic_vars[i].name, src->thisstatic_vars[i].type, src->thisstatic_vars[i].int_val,
+                         src->thisstatic_vars[i].string_val, src->thisstatic_vars[i].array_val, src->thisstatic_vars[i].entity_val);
+    }
+}
+
+void init_auto_metadata(MetadataStore *ms, const char *name, const char *kind, const char *origin, int symbol_count) {
+    if (!ms->override_all) {
+        if (!ms->override_static) {
+            add_metadata_var(&ms->static_vars, &ms->static_count, &ms->static_capacity, "name", VAR_STRING, 0, name, NULL, NULL);
+            add_metadata_var(&ms->static_vars, &ms->static_count, &ms->static_capacity, "kind", VAR_STRING, 0, kind, NULL, NULL);
+            add_metadata_var(&ms->static_vars, &ms->static_count, &ms->static_capacity, "version", VAR_STRING, 0, "1.0.0", NULL, NULL);
+            add_metadata_var(&ms->static_vars, &ms->static_count, &ms->static_capacity, "origin", VAR_STRING, 0, origin ? origin : "core", NULL, NULL);
+            add_metadata_var(&ms->static_vars, &ms->static_count, &ms->static_capacity, "symbols", VAR_INT, symbol_count, NULL, NULL, NULL);
+        }
+        add_metadata_var(&ms->dynamic_vars, &ms->dynamic_count, &ms->dynamic_capacity, "loadCount", VAR_INT, 1, NULL, NULL, NULL);
+        static int run_id_counter = 1000;
+        add_metadata_var(&ms->thisstatic_vars, &ms->thisstatic_count, &ms->thisstatic_capacity, "loadedAt", VAR_INT, ++run_id_counter, NULL, NULL, NULL);
+    }
+}
+
+int is_meta_block_header(const char *text) {
+    if (strncmp(text, "meta:", 5) == 0) return 1;
+    if (strncmp(text, "meta ", 5) == 0) return 1;
+    if (strncmp(text, "meta?", 5) == 0) return 1;
+    if (strcmp(text, "meta") == 0) return 1;
+    return 0;
+}
+
+void parse_meta_block(int start_idx, int end_idx, MetadataStore *ms) {
+    int cur_sub = 0; // 1 = static, 2 = dynamic, 3 = thisstatic
+    for (int idx = start_idx; idx <= end_idx; idx++) {
+        Line *ln = &lines[idx];
+        if (ln->text[0] == '\0' || ln->text[0] == '!') continue;
+        if (strncmp(ln->text, "static:", 7) == 0 || strncmp(ln->text, "static ", 7) == 0 || strncmp(ln->text, "static?", 7) == 0 || strcmp(ln->text, "static") == 0) {
+            cur_sub = 1;
+            if (strstr(ln->text, "?override") != NULL) {
+                ms->override_static = 1;
+            }
+        } else if (strncmp(ln->text, "dynamic:", 8) == 0 || strncmp(ln->text, "dynamic ", 8) == 0 || strcmp(ln->text, "dynamic") == 0) {
+            cur_sub = 2;
+        } else if (strncmp(ln->text, "thisstatic:", 11) == 0 || strncmp(ln->text, "thisstatic ", 11) == 0 || strcmp(ln->text, "thisstatic") == 0) {
+            cur_sub = 3;
+        } else {
+            const char *c = ln->text;
+            Token key_tok = getNextToken(&c);
+            if (key_tok.type == TOKEN_IDENTIFIER) {
+                Token col = getNextToken(&c);
+                if (col.type == TOKEN_COLON) {
+                    freeToken(&col);
+                    char *out_str = NULL;
+                    int out_type = VAR_INT;
+                    Array *out_arr = NULL;
+                    Entity *out_ent = NULL;
+                    int val = evaluate_expression_val(&c, &out_str, &out_type, &out_arr, &out_ent);
+                    if (cur_sub == 1) {
+                        add_metadata_var(&ms->static_vars, &ms->static_count, &ms->static_capacity,
+                                         key_tok.value, out_type, val, out_str, out_arr, out_ent);
+                    } else if (cur_sub == 2) {
+                        add_metadata_var(&ms->dynamic_vars, &ms->dynamic_count, &ms->dynamic_capacity,
+                                         key_tok.value, out_type, val, out_str, out_arr, out_ent);
+                    } else if (cur_sub == 3) {
+                        add_metadata_var(&ms->thisstatic_vars, &ms->thisstatic_count, &ms->thisstatic_capacity,
+                                         key_tok.value, out_type, val, out_str, out_arr, out_ent);
+                    }
+                } else {
+                    freeToken(&col);
+                }
+            }
+            freeToken(&key_tok);
+        }
+    }
+}
 int evaluate_argument(const char **cursor, char **out_str, int *out_type, int *out_int, Array **out_arr, Entity **out_ent) {
     Token peek = peekToken(cursor);
     if (peek.type == TOKEN_LPAREN) {
@@ -1635,6 +1868,8 @@ Entity* instantiate_entity(ClassDef *cd, const char **cursor, int line_num) {
         param_var->entity_val = evaluated_args[p].ent_val;
     }
 
+    clone_metadata_store(&cd->meta, &ent->meta);
+
     Entity *saved_ent = current_entity;
     current_entity = ent;
 
@@ -1772,7 +2007,7 @@ Entity* instantiate_entity(ClassDef *cd, const char **cursor, int line_num) {
                         freeToken(&param);
                         continue;
                     }
-                    if (param.type == TOKEN_IDENTIFIER && mr->param_count < 16) {
+                    if ((param.type == TOKEN_IDENTIFIER || param.type == TOKEN_ARR) && param.value && mr->param_count < 16) {
                         strncpy(mr->params[mr->param_count++], param.value, 63);
                     }
                     freeToken(&param);
@@ -2247,8 +2482,11 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
         freeToken(&peek);
         Token rp = getNextToken(cursor);
         if (rp.type != TOKEN_RPAREN) {
+            char tokval[64] = "";
+            if (rp.value) strncpy(tokval, rp.value, 63);
+            int toktype = rp.type;
             freeToken(&rp);
-            throw_error("SyntaxError", "Expected ')' on line %d", current_executing_line);
+            throw_error("SyntaxError", "Expected ')' on line %d, got token type %d ('%s')", current_executing_line, toktype, tokval);
         }
         freeToken(&rp);
         if (sign == -1) {
@@ -2321,6 +2559,73 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
         }
 
         // 3. Check if member access or method call: ident.member
+        if (strcmp(t.value, "meta") == 0 && peek.type == TOKEN_DOT) {
+            freeToken(&peek);
+            Token dot = getNextToken(cursor); freeToken(&dot);
+            Token part = getNextToken(cursor);
+            char partition_name[32] = "";
+            if (part.type == TOKEN_STATIC || (part.type == TOKEN_IDENTIFIER && strcmp(part.value, "static") == 0)) {
+                strncpy(partition_name, "static", 31);
+            } else if (part.type == TOKEN_DYNAMIC || (part.type == TOKEN_IDENTIFIER && strcmp(part.value, "dynamic") == 0)) {
+                strncpy(partition_name, "dynamic", 31);
+            } else if (part.type == TOKEN_IDENTIFIER && strcmp(part.value, "thisstatic") == 0) {
+                strncpy(partition_name, "thisstatic", 31);
+            } else {
+                freeToken(&part); freeToken(&t);
+                throw_error("SyntaxError", "Expected metadata partition (static, dynamic, thisstatic) after 'meta.' on line %d", current_executing_line);
+            }
+            Token dot2 = getNextToken(cursor);
+            if (dot2.type != TOKEN_DOT) {
+                freeToken(&dot2); freeToken(&part); freeToken(&t);
+                throw_error("SyntaxError", "Expected '.' after 'meta.%s' on line %d", partition_name, current_executing_line);
+            }
+            freeToken(&dot2);
+            Token key = getNextToken(cursor);
+            if (key.type != TOKEN_IDENTIFIER) {
+                freeToken(&key); freeToken(&part); freeToken(&t);
+                throw_error("SyntaxError", "Expected metadata key name after 'meta.%s.' on line %d", partition_name, current_executing_line);
+            }
+            MetadataStore *ms = get_current_metadata_store();
+            if (!ms) {
+                freeToken(&key); freeToken(&part); freeToken(&t);
+                throw_error("VisibilityError", "Cannot access metadata outside library or class on line %d", current_executing_line);
+            }
+            Variable *vars = NULL;
+            int count = 0;
+            if (strcmp(partition_name, "static") == 0) {
+                vars = ms->static_vars;
+                count = ms->static_count;
+            } else if (strcmp(partition_name, "dynamic") == 0) {
+                vars = ms->dynamic_vars;
+                count = ms->dynamic_count;
+            } else if (strcmp(partition_name, "thisstatic") == 0) {
+                vars = ms->thisstatic_vars;
+                count = ms->thisstatic_count;
+            }
+            Variable *found = NULL;
+            for (int k = 0; k < count; k++) {
+                if (strcmp(vars[k].name, key.value) == 0) {
+                    found = &vars[k];
+                    break;
+                }
+            }
+            if (!found) {
+                char err_key[64], err_p[64];
+                strncpy(err_key, key.value, 63);
+                strncpy(err_p, part.value, 63);
+                freeToken(&key); freeToken(&part); freeToken(&t);
+                throw_error("UndefinedVariableError", "Metadata property '%s.%s' not found on line %d", err_p, err_key, current_executing_line);
+            }
+            *out_type = found->type;
+            if (found->type == VAR_INT) acc = found->int_val * sign;
+            else if (found->type == VAR_BOOL) { acc = found->int_val; *out_type = VAR_BOOL; }
+            else if (found->type == VAR_STRING) { *out_str = strdup(found->string_val ? found->string_val : ""); track_alloc(*out_str); }
+            else if (found->type == VAR_ARRAY) { if (out_arr) *out_arr = found->array_val; *out_str = array_to_string(found->array_val); }
+            else if (found->type == VAR_ENTITY) { if (out_ent) *out_ent = found->entity_val; *out_str = entity_to_string(found->entity_val); }
+            freeToken(&key); freeToken(&part); freeToken(&t);
+            return acc;
+        }
+
         if (peek.type == TOKEN_DOT) {
             freeToken(&peek);
             Token dot = getNextToken(cursor); freeToken(&dot);
@@ -2333,6 +2638,11 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
             // Check if t.value is a Library
             LibraryDef *lib = find_library(t.value);
             if (lib) {
+                if (strcmp(mem.value, "meta") == 0) {
+                    char l_name[64]; strncpy(l_name, lib->name, 63);
+                    freeToken(&mem); freeToken(&t);
+                    throw_error("VisibilityError", "Metadata is strictly internal to library '%s' on line %d", l_name, current_executing_line);
+                }
                 Token call_peek = peekToken(cursor);
                 if (call_peek.type == TOKEN_LPAREN) {
                     freeToken(&call_peek);
@@ -2442,6 +2752,11 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
                 throw_error("UndefinedVariableError", "Variable '%s' is not an entity on line %d", t.value, current_executing_line);
             }
             Entity *ent = ev->entity_val;
+            if (strcmp(mem.value, "meta") == 0) {
+                char c_name[64]; strncpy(c_name, ent->class_name, 63);
+                freeToken(&mem); freeToken(&t);
+                throw_error("VisibilityError", "Metadata is strictly internal to class '%s' on line %d", c_name, current_executing_line);
+            }
             Token call_peek = peekToken(cursor);
             if (call_peek.type == TOKEN_LPAREN) {
                 freeToken(&call_peek);
@@ -2968,7 +3283,7 @@ void parse_and_register_routine(const char *def_line, int body_start, int body_e
             freeToken(&param_tok);
             break;
         }
-        if (param_tok.type == TOKEN_IDENTIFIER) {
+        if ((param_tok.type == TOKEN_IDENTIFIER || param_tok.type == TOKEN_ARR) && param_tok.value) {
             if (r->param_count < 16) {
                 strncpy(r->params[r->param_count], param_tok.value, sizeof(r->params[0]) - 1);
                 r->params[r->param_count][sizeof(r->params[0]) - 1] = '\0';
@@ -3021,7 +3336,7 @@ void parse_lines(const char *buffer) {
                     if (!in_string && src_ptr[0] == '!' && src_ptr[1] == '!') {
                         in_multiline_comment = 1;
                         src_ptr += 2;
-                    } else if (!in_string && src_ptr[0] == '!' && src_ptr[1] != '!') {
+                    } else if (!in_string && src_ptr[0] == '!' && src_ptr[1] != '!' && src_ptr[1] != '=') {
                         // single line comment
                         break;
                     } else {
@@ -3391,6 +3706,62 @@ void execute_line(const char *text, int line_num) {
             // Dot notation: ident.prop: val or ident.method(...)
             else if (next.type == TOKEN_DOT) {
                 freeToken(&next);
+                if (strcmp(t.value, "meta") == 0) {
+                    Token dot = getNextToken(&cursor); freeToken(&dot);
+                    Token part = getNextToken(&cursor);
+                    char partition_name[32] = "";
+                    if (part.type == TOKEN_STATIC || (part.type == TOKEN_IDENTIFIER && strcmp(part.value, "static") == 0)) {
+                        strncpy(partition_name, "static", 31);
+                    } else if (part.type == TOKEN_DYNAMIC || (part.type == TOKEN_IDENTIFIER && strcmp(part.value, "dynamic") == 0)) {
+                        strncpy(partition_name, "dynamic", 31);
+                    } else if (part.type == TOKEN_IDENTIFIER && strcmp(part.value, "thisstatic") == 0) {
+                        strncpy(partition_name, "thisstatic", 31);
+                    } else {
+                        freeToken(&part); freeToken(&t);
+                        throw_error("SyntaxError", "Expected metadata partition after 'meta.' on line %d", line_num);
+                    }
+                    Token dot2 = getNextToken(&cursor);
+                    if (dot2.type != TOKEN_DOT) {
+                        freeToken(&dot2); freeToken(&part); freeToken(&t);
+                        throw_error("SyntaxError", "Expected '.' after 'meta.%s' on line %d", partition_name, line_num);
+                    }
+                    freeToken(&dot2);
+                    Token key = getNextToken(&cursor);
+                    if (key.type != TOKEN_IDENTIFIER) {
+                        freeToken(&key); freeToken(&part); freeToken(&t);
+                        throw_error("SyntaxError", "Expected metadata key name after 'meta.%s.' on line %d", partition_name, line_num);
+                    }
+                    Token col = getNextToken(&cursor);
+                    if (col.type != TOKEN_COLON) {
+                        freeToken(&col); freeToken(&key); freeToken(&part); freeToken(&t);
+                        throw_error("SyntaxError", "Expected ':' after metadata property on line %d", line_num);
+                    }
+                    freeToken(&col);
+                    MetadataStore *ms = get_current_metadata_store();
+                    if (!ms) {
+                        freeToken(&key); freeToken(&part); freeToken(&t);
+                        throw_error("VisibilityError", "Cannot access metadata outside library or class on line %d", line_num);
+                    }
+                    if (strcmp(partition_name, "static") == 0) {
+                        char k[64]; strncpy(k, key.value, 63);
+                        freeToken(&key); freeToken(&part); freeToken(&t);
+                        throw_error("ImmutableError", "Cannot modify immutable metadata property 'meta.static.%s' on line %d", k, line_num);
+                    } else if (strcmp(partition_name, "thisstatic") == 0) {
+                        char k[64]; strncpy(k, key.value, 63);
+                        freeToken(&key); freeToken(&part); freeToken(&t);
+                        throw_error("ImmutableError", "Cannot modify immutable metadata property 'meta.thisstatic.%s' on line %d", k, line_num);
+                    } else if (strcmp(partition_name, "dynamic") == 0) {
+                        char *out_str = NULL;
+                        int out_type = VAR_INT;
+                        Array *out_arr = NULL;
+                        Entity *out_ent = NULL;
+                        int val = evaluate_expression_val(&cursor, &out_str, &out_type, &out_arr, &out_ent);
+                        add_metadata_var(&ms->dynamic_vars, &ms->dynamic_count, &ms->dynamic_capacity,
+                                         key.value, out_type, val, out_str, out_arr, out_ent);
+                        freeToken(&key); freeToken(&part); freeToken(&t);
+                        continue;
+                    }
+                }
                 Token dot = getNextToken(&cursor); freeToken(&dot);
                 Token mem = getNextToken(&cursor);
                 if (mem.type != TOKEN_IDENTIFIER) {
@@ -3409,6 +3780,11 @@ void execute_line(const char *text, int line_num) {
 
                     LibraryDef *lib = find_library(t.value);
                     if (lib) {
+                        if (strcmp(mem.value, "meta") == 0) {
+                            char l_name[64]; strncpy(l_name, lib->name, 63);
+                            freeToken(&mem); freeToken(&t);
+                            throw_error("VisibilityError", "Metadata is strictly internal to library '%s' on line %d", l_name, line_num);
+                        }
                         for (int k = 0; k < lib->const_count; k++) {
                             if (strcmp(lib->const_vars[k].name, mem.value) == 0) {
                                 throw_error("ImmutableError", "Cannot modify immutable library constant '%s' on line %d", mem.value, line_num);
@@ -3446,6 +3822,11 @@ void execute_line(const char *text, int line_num) {
                             throw_error("UndefinedVariableError", "Variable '%s' is not an entity on line %d", t.value, line_num);
                         }
                         Entity *ent = ev->entity_val;
+                        if (strcmp(mem.value, "meta") == 0) {
+                            char c_name[64]; strncpy(c_name, ent->class_name, 63);
+                            freeToken(&mem); freeToken(&t);
+                            throw_error("VisibilityError", "Metadata is strictly internal to class '%s' on line %d", c_name, line_num);
+                        }
                         for (int k = 0; k < ent->static_count; k++) {
                             if (strcmp(ent->static_vars[k].name, mem.value) == 0) {
                                 throw_error("ImmutableError", "Cannot modify immutable static property '%s' on line %d", mem.value, line_num);
@@ -3485,6 +3866,11 @@ void execute_line(const char *text, int line_num) {
                 } else if (after_mem.type == TOKEN_LPAREN) {
                     LibraryDef *lib = find_library(t.value);
                     if (lib) {
+                        if (strcmp(mem.value, "meta") == 0) {
+                            char l_name[64]; strncpy(l_name, lib->name, 63);
+                            freeToken(&after_mem); freeToken(&mem); freeToken(&t);
+                            throw_error("VisibilityError", "Metadata is strictly internal to library '%s' on line %d", l_name, line_num);
+                        }
                         freeToken(&after_mem);
                         Token lp = getNextToken(&cursor); freeToken(&lp);
                         Routine *r = NULL;
@@ -3520,6 +3906,11 @@ void execute_line(const char *text, int line_num) {
                             freeToken(&after_mem);
                             Token lp = getNextToken(&cursor); freeToken(&lp);
                             Entity *ent = ev->entity_val;
+                            if (strcmp(mem.value, "meta") == 0) {
+                                char c_name[64]; strncpy(c_name, ent->class_name, 63);
+                                freeToken(&mem); freeToken(&t);
+                                throw_error("VisibilityError", "Metadata is strictly internal to class '%s' on line %d", c_name, line_num);
+                            }
                             Routine *m = NULL;
                             for (int k = 0; k < ent->method_count; k++) {
                                 if (strcmp(ent->methods[k].name, mem.value) == 0) { m = &ent->methods[k]; break; }
@@ -3687,11 +4078,28 @@ void execute_block(int start, int end) {
                         cur_section = 2;
                         cd->dynamic_start_line = idx + 1;
                         cd->dynamic_end_line = idx;
+                    } else if (is_meta_block_header(ln->text)) {
+                        cur_section = 3;
+                        if (strstr(ln->text, "?override") != NULL) {
+                            cd->meta.override_all = 1;
+                        }
+                        int m_start = idx + 1;
+                        int m_end = idx;
+                        while (m_end + 1 <= block_end) {
+                            Line *next = &lines[m_end + 1];
+                            if (next->text[0] == '\0' || next->text[0] == '!') { m_end++; continue; }
+                            if (next->indent > ln->indent) m_end++;
+                            else break;
+                        }
+                        parse_meta_block(m_start, m_end, &cd->meta);
+                        idx = m_end;
+                        continue;
                     } else {
                         if (cur_section == 1) cd->static_end_line = idx;
                         else if (cur_section == 2) cd->dynamic_end_line = idx;
                     }
                 }
+                init_auto_metadata(&cd->meta, cd->name, "class", "source", cd->param_count);
                 i = block_end + 1;
             }
             else if (strncmp(effective_text, "lib ", 4) == 0 || strncmp(effective_text, "library ", 8) == 0) {
@@ -3717,17 +4125,33 @@ void execute_block(int start, int end) {
                 if (nlen > 63) nlen = 63;
                 strncpy(lib->name, name_start, nlen);
 
-                int cur_sec = 0; // 1 = const, 2 = dynamic
+                int cur_sec = 0; // 1 = const/static, 2 = dynamic
                 LibraryDef *prev_lib_ctx = current_library;
                 current_library = lib;
 
                 for (int idx = block_start; idx <= block_end; idx++) {
                     Line *ln = &lines[idx];
                     if (ln->text[0] == '\0' || ln->text[0] == '!') continue;
-                    if (strcmp(ln->text, "const:") == 0 || strncmp(ln->text, "const:", 6) == 0) {
+                    if (strcmp(ln->text, "const:") == 0 || strncmp(ln->text, "const:", 6) == 0 ||
+                        strcmp(ln->text, "static:") == 0 || strncmp(ln->text, "static:", 7) == 0) {
                         cur_sec = 1;
                     } else if (strcmp(ln->text, "dynamic:") == 0 || strncmp(ln->text, "dynamic:", 8) == 0) {
                         cur_sec = 2;
+                    } else if (is_meta_block_header(ln->text)) {
+                        if (strstr(ln->text, "?override") != NULL) {
+                            lib->meta.override_all = 1;
+                        }
+                        int m_start = idx + 1;
+                        int m_end = idx;
+                        while (m_end + 1 <= block_end) {
+                            Line *next = &lines[m_end + 1];
+                            if (next->text[0] == '\0' || next->text[0] == '!') { m_end++; continue; }
+                            if (next->indent > ln->indent) m_end++;
+                            else break;
+                        }
+                        parse_meta_block(m_start, m_end, &lib->meta);
+                        idx = m_end;
+                        continue;
                     } else if (strncmp(ln->text, "class ", 6) == 0 || strncmp(ln->text, "class(", 6) == 0) {
                         int c_start = idx + 1;
                         int c_end = idx;
@@ -3778,11 +4202,28 @@ void execute_block(int start, int end) {
                                 c_section = 2;
                                 cd->dynamic_start_line = c_idx + 1;
                                 cd->dynamic_end_line = c_idx;
+                            } else if (is_meta_block_header(cln->text)) {
+                                c_section = 3;
+                                if (strstr(cln->text, "?override") != NULL) {
+                                    cd->meta.override_all = 1;
+                                }
+                                int m_start = c_idx + 1;
+                                int m_end = c_idx;
+                                while (m_end + 1 <= c_end) {
+                                    Line *next = &lines[m_end + 1];
+                                    if (next->text[0] == '\0' || next->text[0] == '!') { m_end++; continue; }
+                                    if (next->indent > cln->indent) m_end++;
+                                    else break;
+                                }
+                                parse_meta_block(m_start, m_end, &cd->meta);
+                                c_idx = m_end;
+                                continue;
                             } else {
                                 if (c_section == 1) cd->static_end_line = c_idx;
                                 else if (c_section == 2) cd->dynamic_end_line = c_idx;
                             }
                         }
+                        init_auto_metadata(&cd->meta, cd->name, "class", "source", cd->param_count);
                         idx = c_end;
                         continue;
                     } else {
@@ -3839,7 +4280,7 @@ void execute_block(int start, int end) {
                                     freeToken(&ptok);
                                     continue;
                                 }
-                                if (ptok.type == TOKEN_IDENTIFIER && lr->param_count < 16) {
+                                if ((ptok.type == TOKEN_IDENTIFIER || ptok.type == TOKEN_ARR) && ptok.value && lr->param_count < 16) {
                                     strncpy(lr->params[lr->param_count++], ptok.value, 63);
                                 }
                                 freeToken(&ptok);
@@ -3898,6 +4339,7 @@ void execute_block(int start, int end) {
                         }
                     }
                 }
+                init_auto_metadata(&lib->meta, lib->name, "library", "core", lib->routine_count + lib->const_count + lib->dynamic_count);
                 current_library = prev_lib_ctx;
                 i = block_end + 1;
             }

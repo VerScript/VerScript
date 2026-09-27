@@ -1,0 +1,117 @@
+! VerScript Comprehensive Metadata and Core Libraries Test
+
+lib MathEx
+  meta:
+    static:
+      author: "VerScript Core Team"
+      revision: 42
+    dynamic:
+      callCount: 0
+    thisstatic:
+      buildTag: "RELEASE_2026"
+  dynamic:
+    def func getAuthor()
+      reply meta.static.author
+    def func getRevision()
+      reply meta.static.revision
+    def func getSysName()
+      reply meta.static.name
+    def func getSysKind()
+      reply meta.static.kind
+    def func getCallCount()
+      reply meta.dynamic.callCount
+    def method incCalls()
+      meta.dynamic.callCount: meta.dynamic.callCount + 1
+    def func getBuildTag()
+      reply meta.thisstatic.buildTag
+    def func getLoadedAt()
+      reply meta.thisstatic.loadedAt
+
+display "=== TEST 1: Library Metadata Read & Mutation ==="
+display "Author: " + (MathEx.getAuthor())
+display "Revision: " + (MathEx.getRevision())
+display "SysName: " + (MathEx.getSysName())
+display "SysKind: " + (MathEx.getSysKind())
+display "BuildTag: " + (MathEx.getBuildTag())
+display "Initial Calls: " + (MathEx.getCallCount())
+MathEx.incCalls()
+MathEx.incCalls()
+display "Incremented Calls: " + (MathEx.getCallCount())
+
+display "=== TEST 2: Overrides ==="
+lib CleanLib
+  meta ?override:
+    static:
+      cleanTag: "PURE"
+  dynamic:
+    def func getCleanTag()
+      reply meta.static.cleanTag
+
+display "CleanLib tag: " + (CleanLib.getCleanTag())
+
+lib SemiCleanLib
+  meta:
+    static ?override:
+      semiTag: "SEMI"
+  dynamic:
+    def func getSemiTag()
+      reply meta.static.semiTag
+    def func getLoadCount()
+      reply meta.dynamic.loadCount
+
+display "SemiCleanLib tag: " + (SemiCleanLib.getSemiTag())
+display "SemiCleanLib loadCount: " + (SemiCleanLib.getLoadCount())
+
+display "=== TEST 3: Class Metadata ==="
+class Worker(name, role)
+  meta:
+    static:
+      dept: "Engineering"
+    dynamic:
+      tasksDone: 0
+  dynamic:
+    def func getDept()
+      reply meta.static.dept
+    def func getSysName()
+      reply meta.static.name
+    def func getTasks()
+      reply meta.dynamic.tasksDone
+    def method finishTask()
+      display "INSIDE finishTask, current tasksDone: " + (meta.dynamic.tasksDone)
+      meta.dynamic.tasksDone: meta.dynamic.tasksDone + 1
+      display "AFTER finishTask increment, tasksDone: " + (meta.dynamic.tasksDone)
+
+set w: Worker("Ada", "Architect")
+display "Worker dept: " + (w.getDept())
+display "Worker sys name: " + (w.getSysName())
+display "Worker initial tasks: " + (w.getTasks())
+w.finishTask()
+display "Worker after task: " + (w.getTasks())
+
+display "=== TEST 4: External Visibility Protection ==="
+do
+  set leaked: MathEx.meta
+  display "FAIL: accessed MathEx.meta"
+unless VisibilityError
+  display "PASS: Caught external access to MathEx.meta -> " + error
+
+do
+  set leakedInst: w.meta
+  display "FAIL: accessed w.meta"
+unless VisibilityError
+  display "PASS: Caught external access to w.meta -> " + error
+
+display "=== TEST 5: Embedded Core Libraries ==="
+load Stats
+load Logic
+
+set numbers: [10, 20, 30, 40]
+display "Stats sum: " + (Stats.sum(numbers))
+display "Stats mean: " + (Stats.mean(numbers))
+set minMax: (Stats.minMax(numbers))
+display "Stats min: " + minMax[0] + ", max: " + minMax[1]
+
+display "Logic XOR true false: " + (Logic.xor(true, false))
+display "Logic XOR true true: " + (Logic.xor(true, true))
+
+display "ALL METADATA & CORE LIB TESTS COMPLETED SUCCESSFULLY!"
