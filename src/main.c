@@ -912,7 +912,7 @@ char* string_pad_right(const char *str, int target_len, const char *pad_char) {
     char *buf = malloc(target_len + 1);
     if (!buf) { printf("ERROR: MemoryAllocationError\n"); exit(1); }
     track_alloc(buf);
-    strcpy(buf, str ? str : "");
+    memmove(buf, str ? str : "", str ? strlen(str) + 1 : 1);
     int plen = strlen(p);
     for (int i = cur_len; i < target_len; i++) {
         buf[i] = p[(i - cur_len) % plen];
@@ -1426,9 +1426,9 @@ void add_metadata_var(Variable **vars, int *count, int *capacity, const char *ke
     }
     if (*count >= *capacity) {
         int new_cap = (*capacity == 0) ? 8 : (*capacity * 2);
-        if (*vars) untrack_alloc((char*)*vars);
         Variable *tmp = realloc(*vars, new_cap * sizeof(Variable));
         if (!tmp) throw_error("MemoryAllocationError", "Memory allocation failed for metadata");
+        if (*vars) untrack_alloc((char*)*vars);
         *vars = tmp;
         track_alloc((char*)*vars);
         *capacity = new_cap;
@@ -2610,9 +2610,9 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
                 }
             }
             if (!found) {
-                char err_key[64], err_p[64];
-                strncpy(err_key, key.value, 63);
-                strncpy(err_p, part.value, 63);
+                char err_key[64] = "", err_p[64] = "";
+                if (key.value) strncpy(err_key, key.value, 63);
+                if (part.value) strncpy(err_p, part.value, 63);
                 freeToken(&key); freeToken(&part); freeToken(&t);
                 throw_error("UndefinedVariableError", "Metadata property '%s.%s' not found on line %d", err_p, err_key, current_executing_line);
             }
@@ -2639,7 +2639,7 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
             LibraryDef *lib = find_library(t.value);
             if (lib) {
                 if (strcmp(mem.value, "meta") == 0) {
-                    char l_name[64]; strncpy(l_name, lib->name, 63);
+                    char l_name[64] = ""; strncpy(l_name, lib->name, 63);
                     freeToken(&mem); freeToken(&t);
                     throw_error("VisibilityError", "Metadata is strictly internal to library '%s' on line %d", l_name, current_executing_line);
                 }
@@ -2753,7 +2753,7 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
             }
             Entity *ent = ev->entity_val;
             if (strcmp(mem.value, "meta") == 0) {
-                char c_name[64]; strncpy(c_name, ent->class_name, 63);
+                char c_name[64] = ""; strncpy(c_name, ent->class_name, 63);
                 freeToken(&mem); freeToken(&t);
                 throw_error("VisibilityError", "Metadata is strictly internal to class '%s' on line %d", c_name, current_executing_line);
             }
@@ -3743,11 +3743,11 @@ void execute_line(const char *text, int line_num) {
                         throw_error("VisibilityError", "Cannot access metadata outside library or class on line %d", line_num);
                     }
                     if (strcmp(partition_name, "static") == 0) {
-                        char k[64]; strncpy(k, key.value, 63);
+                        char k[64] = ""; if (key.value) strncpy(k, key.value, 63);
                         freeToken(&key); freeToken(&part); freeToken(&t);
                         throw_error("ImmutableError", "Cannot modify immutable metadata property 'meta.static.%s' on line %d", k, line_num);
                     } else if (strcmp(partition_name, "thisstatic") == 0) {
-                        char k[64]; strncpy(k, key.value, 63);
+                        char k[64] = ""; if (key.value) strncpy(k, key.value, 63);
                         freeToken(&key); freeToken(&part); freeToken(&t);
                         throw_error("ImmutableError", "Cannot modify immutable metadata property 'meta.thisstatic.%s' on line %d", k, line_num);
                     } else if (strcmp(partition_name, "dynamic") == 0) {
@@ -3781,7 +3781,7 @@ void execute_line(const char *text, int line_num) {
                     LibraryDef *lib = find_library(t.value);
                     if (lib) {
                         if (strcmp(mem.value, "meta") == 0) {
-                            char l_name[64]; strncpy(l_name, lib->name, 63);
+                            char l_name[64] = ""; strncpy(l_name, lib->name, 63);
                             freeToken(&mem); freeToken(&t);
                             throw_error("VisibilityError", "Metadata is strictly internal to library '%s' on line %d", l_name, line_num);
                         }
@@ -3823,7 +3823,7 @@ void execute_line(const char *text, int line_num) {
                         }
                         Entity *ent = ev->entity_val;
                         if (strcmp(mem.value, "meta") == 0) {
-                            char c_name[64]; strncpy(c_name, ent->class_name, 63);
+                            char c_name[64] = ""; strncpy(c_name, ent->class_name, 63);
                             freeToken(&mem); freeToken(&t);
                             throw_error("VisibilityError", "Metadata is strictly internal to class '%s' on line %d", c_name, line_num);
                         }
@@ -3867,7 +3867,7 @@ void execute_line(const char *text, int line_num) {
                     LibraryDef *lib = find_library(t.value);
                     if (lib) {
                         if (strcmp(mem.value, "meta") == 0) {
-                            char l_name[64]; strncpy(l_name, lib->name, 63);
+                            char l_name[64] = ""; strncpy(l_name, lib->name, 63);
                             freeToken(&after_mem); freeToken(&mem); freeToken(&t);
                             throw_error("VisibilityError", "Metadata is strictly internal to library '%s' on line %d", l_name, line_num);
                         }
@@ -3907,7 +3907,7 @@ void execute_line(const char *text, int line_num) {
                             Token lp = getNextToken(&cursor); freeToken(&lp);
                             Entity *ent = ev->entity_val;
                             if (strcmp(mem.value, "meta") == 0) {
-                                char c_name[64]; strncpy(c_name, ent->class_name, 63);
+                                char c_name[64] = ""; strncpy(c_name, ent->class_name, 63);
                                 freeToken(&mem); freeToken(&t);
                                 throw_error("VisibilityError", "Metadata is strictly internal to class '%s' on line %d", c_name, line_num);
                             }
