@@ -229,6 +229,38 @@ Token getNextToken(const char **cursor) {
             token.type = TOKEN_LOAD;
             return token;
         }
+        if (len == 3 && strncmp(start, "and", 3) == 0) {
+            token.type = TOKEN_BOOL_AND;
+            return token;
+        }
+        if (len == 4 && strncmp(start, "nand", 4) == 0) {
+            token.type = TOKEN_BOOL_NAND;
+            return token;
+        }
+        if (len == 2 && strncmp(start, "or", 2) == 0) {
+            token.type = TOKEN_BOOL_OR;
+            return token;
+        }
+        if (len == 3 && strncmp(start, "nor", 3) == 0) {
+            token.type = TOKEN_BOOL_NOR;
+            return token;
+        }
+        if (len == 3 && strncmp(start, "xor", 3) == 0) {
+            token.type = TOKEN_BOOL_XOR;
+            return token;
+        }
+        if (len == 4 && strncmp(start, "xnor", 4) == 0) {
+            token.type = TOKEN_BOOL_XNOR;
+            return token;
+        }
+        if (len == 4 && strncmp(start, "xand", 4) == 0) {
+            token.type = TOKEN_BOOL_XAND;
+            return token;
+        }
+        if (len == 3 && strncmp(start, "not", 3) == 0) {
+            token.type = TOKEN_NOT;
+            return token;
+        }
 
         token.type = TOKEN_IDENTIFIER;
         token.value = malloc(len + 1);
@@ -257,6 +289,10 @@ Token getNextToken(const char **cursor) {
     if (strncmp(*cursor, "==", 2) == 0) { token.type = TOKEN_EQUAL; (*cursor) += 2; return token; }
     if (strncmp(*cursor, "!=", 2) == 0) { token.type = TOKEN_NOT_EQUAL; (*cursor) += 2; return token; }
     if (strncmp(*cursor, "x=", 2) == 0) { token.type = TOKEN_NOT_EQUAL; (*cursor) += 2; return token; }
+    if (strncmp(*cursor, "x&", 2) == 0) { token.type = TOKEN_BOOL_XAMP; (*cursor) += 2; return token; }
+    if (strncmp(*cursor, "&&", 2) == 0) { token.type = TOKEN_AMP; (*cursor) += 2; return token; }
+    if (**cursor == '&') { token.type = TOKEN_AMP; (*cursor)++; return token; }
+    if (strncmp(*cursor, "||", 2) == 0) { token.type = TOKEN_BOOL_OR; (*cursor) += 2; return token; }
     if (strncmp(*cursor, ">=", 2) == 0) { token.type = TOKEN_GREATER_EQUAL; (*cursor) += 2; return token; }
     if (strncmp(*cursor, "<=", 2) == 0) { token.type = TOKEN_LESS_EQUAL; (*cursor) += 2; return token; }
     if (**cursor == '=') { token.type = TOKEN_EQUAL; (*cursor)++; return token; }

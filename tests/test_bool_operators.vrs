@@ -1,0 +1,62 @@
+! Test native boolean logic operators and unbracketed calls
+
+display "--- Testing Normal AND (&) ---"
+set cond1: true
+set cond2: false
+display cond1 & true
+display cond1 & cond2
+
+display "--- Testing Negated AND / NAND (and) ---"
+display true and true
+display true and false
+display false and false
+
+display "--- Testing Normal OR (or) ---"
+display true or false
+display false or false
+
+display "--- Testing Negated OR / NOR (nor) ---"
+display false nor false
+display true nor false
+
+display "--- Testing Exclusive OR (xor) ---"
+display true xor false
+display true xor true
+display false xor false
+
+display "--- Testing Exclusive NOR / Equivalence (xnor) ---"
+display true xnor true
+display true xnor false
+display false xnor false
+
+display "--- Testing XAND (xand, x&) ---"
+display true xand true
+display true xand false
+display true x& true
+display true x& false
+
+display "--- Testing Unary not ---"
+display not true
+display not false
+
+display "--- Testing Boolean in Expressions with Comparisons ---"
+set x: 10
+set y: 20
+display x < y & y = 20
+display x > y or y = 20
+
+display "--- Testing Unbracketed Core Library Calls ---"
+load Math
+set abs_val: (Math.abs -42)
+display abs_val
+set max_val: (Math.max 15 25)
+display max_val
+
+display "--- Testing Unbracketed Custom Routine Calls ---"
+def func add_nums a b
+    reply a + b
+
+set sum: (add_nums 10 32)
+display sum
+
+display "--- Test Completed Successfully ---"

@@ -103,15 +103,14 @@ unless VisibilityError
 
 display "=== TEST 5: Embedded Core Libraries ==="
 load Stats
-load Logic
 
 set numbers: [10, 20, 30, 40]
-display "Stats sum: " + (Stats.sum(numbers))
-display "Stats mean: " + (Stats.mean(numbers))
-set minMax: (Stats.minMax(numbers))
+display "Stats sum: " + (Stats.sum numbers)
+display "Stats mean: " + (Stats.mean numbers)
+set minMax: (Stats.minMax numbers)
 display "Stats min: " + minMax[0] + ", max: " + minMax[1]
 
-display "Logic XOR true false: " + (Logic.xor(true, false))
-display "Logic XOR true true: " + (Logic.xor(true, true))
+display "Native XOR true false: " + (true xor false)
+display "Native XOR true true: " + (true xor true)
 
 display "ALL METADATA & CORE LIB TESTS COMPLETED SUCCESSFULLY!"

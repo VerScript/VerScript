@@ -1092,31 +1092,6 @@ static const char *CORE_LIB_STATS =
     "      set mm: (minMax values)\n"
     "      reply mm[1] - mm[0]\n";
 
-static const char *CORE_LIB_LOGIC =
-    "lib Logic\n"
-    "  meta:\n"
-    "    static:\n"
-    "      category: \"Boolean Logic\"\n"
-    "      version: \"1.0.0\"\n"
-    "  dynamic:\n"
-    "    def func xor a b\n"
-    "      reply a != b\n"
-    "    def func equiv a b\n"
-    "      reply a = b\n"
-    "    def func notVal a\n"
-    "      reply a = false\n"
-    "    def func andVal a b\n"
-    "      if a = true then\n"
-    "        if b = true then\n"
-    "          reply true\n"
-    "      reply false\n"
-    "    def func orVal a b\n"
-    "      if a = true then\n"
-    "        reply true\n"
-    "      if b = true then\n"
-    "        reply true\n"
-    "      reply false\n";
-
 static const char *CORE_LIB_ASSERT =
     "lib Assert\n"
     "  meta:\n"
@@ -1140,7 +1115,6 @@ static const char *CORE_LIB_ASSERT =
 const char* get_embedded_core_lib(const char *name) {
     if (strcmp(name, "Math") == 0) return CORE_LIB_MATH;
     if (strcmp(name, "Stats") == 0) return CORE_LIB_STATS;
-    if (strcmp(name, "Logic") == 0) return CORE_LIB_LOGIC;
     if (strcmp(name, "Assert") == 0) return CORE_LIB_ASSERT;
     return NULL;
 }
@@ -1401,6 +1375,13 @@ int evaluate_expression_val(const char **cursor, char **out_str, int *out_type, 
 int dispatch_array_method(Array *arr, const char *method, const char **cursor, char **out_str, int *out_type, Array **out_arr, Entity **out_ent, int line_num);
 int dispatch_string_method(const char *str, const char *method, const char **cursor, char **out_str, int *out_type, Array **out_arr, Entity **out_ent, int line_num);
 int is_native_func_name(const char *name);
+
+static inline int is_truthy(int val, const char *str_val, int type) {
+    if (type == VAR_STRING) {
+        return (str_val != NULL && str_val[0] != '\0' && strcmp(str_val, "false") != 0 && strcmp(str_val, "0") != 0);
+    }
+    return (val != 0);
+}
 
 MetadataStore* get_current_metadata_store(void) {
     if (current_entity) return &current_entity->meta;
@@ -2378,6 +2359,20 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
         t = getNextToken(cursor);
     }
 
+    if (t.type == TOKEN_NOT) {
+        freeToken(&t);
+        char *sub_str = NULL;
+        int sub_type = VAR_INT;
+        Array *sub_arr = NULL;
+        Entity *sub_ent = NULL;
+        int sub_val = evaluate_operand_val(cursor, &sub_str, &sub_type, &sub_arr, &sub_ent);
+        int truth = is_truthy(sub_val, sub_str, sub_type);
+        if (sub_str) { untrack_alloc(sub_str); free(sub_str); }
+        *out_str = NULL;
+        *out_type = VAR_BOOL;
+        return !truth;
+    }
+
     if (t.type == TOKEN_NUMBER) {
         acc = atoi(t.value) * sign;
     } else if (t.type == TOKEN_TRUE) {
@@ -2644,32 +2639,41 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
                     throw_error("VisibilityError", "Metadata is strictly internal to library '%s' on line %d", l_name, current_executing_line);
                 }
                 Token call_peek = peekToken(cursor);
-                if (call_peek.type == TOKEN_LPAREN) {
+                // Check if class defined inside library
+                ClassDef *cd = find_class(mem.value);
+                if (cd && call_peek.type == TOKEN_LPAREN) {
                     freeToken(&call_peek);
                     Token lp = getNextToken(cursor); freeToken(&lp);
-                    // Check if class defined inside library
-                    ClassDef *cd = find_class(mem.value);
-                    if (cd) {
-                        Entity *ent = instantiate_entity(cd, cursor, current_executing_line);
-                        Token rp = getNextToken(cursor);
-                        if (rp.type != TOKEN_RPAREN) { freeToken(&rp); throw_error("SyntaxError", "Expected ')' after class instantiation on line %d", current_executing_line); }
-                        freeToken(&rp);
-                        *out_type = VAR_ENTITY;
-                        if (out_ent) *out_ent = ent;
-                        current_reply.entity_val = ent;
-                        *out_str = entity_to_string(ent);
-                        freeToken(&mem); freeToken(&t);
-                        return 0;
-                    }
-                    Routine *r = NULL;
-                    for (int i = 0; i < lib->routine_count; i++) {
-                        if (strcmp(lib->routines[i].name, mem.value) == 0) { r = &lib->routines[i]; break; }
-                    }
-                    if (!r) throw_error("SyntaxError", "Library '%s' has no routine '%s' on line %d", lib->name, mem.value, current_executing_line);
-                    call_routine_val(r, cursor, out_str, out_type, &acc, current_executing_line);
+                    Entity *ent = instantiate_entity(cd, cursor, current_executing_line);
                     Token rp = getNextToken(cursor);
-                    if (rp.type != TOKEN_RPAREN) { freeToken(&rp); throw_error("SyntaxError", "Expected ')' on line %d", current_executing_line); }
+                    if (rp.type != TOKEN_RPAREN) { freeToken(&rp); throw_error("SyntaxError", "Expected ')' after class instantiation on line %d", current_executing_line); }
                     freeToken(&rp);
+                    *out_type = VAR_ENTITY;
+                    if (out_ent) *out_ent = ent;
+                    current_reply.entity_val = ent;
+                    *out_str = entity_to_string(ent);
+                    freeToken(&mem); freeToken(&t);
+                    return 0;
+                }
+                Routine *r = NULL;
+                for (int i = 0; i < lib->routine_count; i++) {
+                    if (strcmp(lib->routines[i].name, mem.value) == 0) { r = &lib->routines[i]; break; }
+                }
+                if (r) {
+                    int has_parens = 0;
+                    if (call_peek.type == TOKEN_LPAREN) {
+                        has_parens = 1;
+                        freeToken(&call_peek);
+                        Token lp = getNextToken(cursor); freeToken(&lp);
+                    } else {
+                        freeToken(&call_peek);
+                    }
+                    call_routine_val(r, cursor, out_str, out_type, &acc, current_executing_line);
+                    if (has_parens) {
+                        Token rp = getNextToken(cursor);
+                        if (rp.type != TOKEN_RPAREN) { freeToken(&rp); throw_error("SyntaxError", "Expected ')' on line %d", current_executing_line); }
+                        freeToken(&rp);
+                    }
                     freeToken(&mem);
                     freeToken(&t);
                     return acc;
@@ -2758,18 +2762,25 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
                 throw_error("VisibilityError", "Metadata is strictly internal to class '%s' on line %d", c_name, current_executing_line);
             }
             Token call_peek = peekToken(cursor);
-            if (call_peek.type == TOKEN_LPAREN) {
-                freeToken(&call_peek);
-                Token lp = getNextToken(cursor); freeToken(&lp);
-                Routine *m = NULL;
-                for (int i = 0; i < ent->method_count; i++) {
-                    if (strcmp(ent->methods[i].name, mem.value) == 0) { m = &ent->methods[i]; break; }
+            Routine *m = NULL;
+            for (int i = 0; i < ent->method_count; i++) {
+                if (strcmp(ent->methods[i].name, mem.value) == 0) { m = &ent->methods[i]; break; }
+            }
+            if (m) {
+                int has_parens = 0;
+                if (call_peek.type == TOKEN_LPAREN) {
+                    has_parens = 1;
+                    freeToken(&call_peek);
+                    Token lp = getNextToken(cursor); freeToken(&lp);
+                } else {
+                    freeToken(&call_peek);
                 }
-                if (!m) throw_error("EntityError", "Entity '%s' has no method '%s' on line %d", ent->class_name, mem.value, current_executing_line);
                 call_routine_val(m, cursor, out_str, out_type, &acc, current_executing_line);
-                Token rp = getNextToken(cursor);
-                if (rp.type != TOKEN_RPAREN) { freeToken(&rp); throw_error("SyntaxError", "Expected ')' on line %d", current_executing_line); }
-                freeToken(&rp);
+                if (has_parens) {
+                    Token rp = getNextToken(cursor);
+                    if (rp.type != TOKEN_RPAREN) { freeToken(&rp); throw_error("SyntaxError", "Expected ')' on line %d", current_executing_line); }
+                    freeToken(&rp);
+                }
                 freeToken(&mem);
                 freeToken(&t);
                 return acc;
@@ -3068,7 +3079,7 @@ int evaluate_operand(const char **cursor, char **out_str, int *out_type) {
     return evaluate_operand_val(cursor, out_str, out_type, NULL, NULL);
 }
 
-int evaluate_expression_val(const char **cursor, char **out_str, int *out_type, Array **out_arr, Entity **out_ent) {
+static int evaluate_arithmetic_val(const char **cursor, char **out_str, int *out_type, Array **out_arr, Entity **out_ent) {
     int acc = evaluate_operand_val(cursor, out_str, out_type, out_arr, out_ent);
 
     while (1) {
@@ -3098,7 +3109,11 @@ int evaluate_expression_val(const char **cursor, char **out_str, int *out_type, 
                     *out_str = new_str;
                 } else if (*out_str != NULL && rhs_str == NULL) {
                     char num_str[32];
-                    snprintf(num_str, sizeof(num_str), "%d", rhs_val);
+                    if (rhs_type == VAR_BOOL) {
+                        snprintf(num_str, sizeof(num_str), "%s", rhs_val ? "true" : "false");
+                    } else {
+                        snprintf(num_str, sizeof(num_str), "%d", rhs_val);
+                    }
                     size_t len1 = strlen(*out_str);
                     size_t len2 = strlen(num_str);
                     char *new_str = malloc(len1 + len2 + 1);
@@ -3111,7 +3126,11 @@ int evaluate_expression_val(const char **cursor, char **out_str, int *out_type, 
                     *out_str = new_str;
                 } else if (*out_str == NULL && rhs_str != NULL) {
                     char num_str[32];
-                    snprintf(num_str, sizeof(num_str), "%d", acc);
+                    if (*out_type == VAR_BOOL) {
+                        snprintf(num_str, sizeof(num_str), "%s", acc ? "true" : "false");
+                    } else {
+                        snprintf(num_str, sizeof(num_str), "%d", acc);
+                    }
                     size_t len1 = strlen(num_str);
                     size_t len2 = strlen(rhs_str);
                     char *new_str = malloc(len1 + len2 + 1);
@@ -3149,40 +3168,117 @@ int evaluate_expression_val(const char **cursor, char **out_str, int *out_type, 
                 }
             }
             if (rhs_str) { untrack_alloc(rhs_str); free(rhs_str); }
+        } else {
+            freeToken(&op);
+            break;
         }
-        else if (op.type == TOKEN_EQUAL || op.type == TOKEN_GREATER || op.type == TOKEN_LESS ||
-                 op.type == TOKEN_GREATER_EQUAL || op.type == TOKEN_LESS_EQUAL || op.type == TOKEN_NOT_EQUAL) {
-            TokenType cmp_type = op.type;
+    }
+
+    return acc;
+}
+
+static int evaluate_comparison_val(const char **cursor, char **out_str, int *out_type, Array **out_arr, Entity **out_ent) {
+    int acc = evaluate_arithmetic_val(cursor, out_str, out_type, out_arr, out_ent);
+
+    Token op = peekToken(cursor);
+    if (op.type == TOKEN_EQUAL || op.type == TOKEN_GREATER || op.type == TOKEN_LESS ||
+        op.type == TOKEN_GREATER_EQUAL || op.type == TOKEN_LESS_EQUAL || op.type == TOKEN_NOT_EQUAL) {
+        TokenType cmp_type = op.type;
+        freeToken(&op);
+        Token op_consumed = getNextToken(cursor);
+        freeToken(&op_consumed);
+
+        char *rhs_str = NULL;
+        int rhs_type = VAR_INT;
+        Array *rhs_arr = NULL;
+        Entity *rhs_ent = NULL;
+        int rhs_val = evaluate_arithmetic_val(cursor, &rhs_str, &rhs_type, &rhs_arr, &rhs_ent);
+
+        int cmp_res = 0;
+        if (*out_str != NULL && rhs_str != NULL) {
+            int cmp = strcmp(*out_str, rhs_str);
+            if (cmp_type == TOKEN_EQUAL) cmp_res = (cmp == 0);
+            else if (cmp_type == TOKEN_NOT_EQUAL) cmp_res = (cmp != 0);
+            else if (cmp_type == TOKEN_GREATER) cmp_res = (cmp > 0);
+            else if (cmp_type == TOKEN_LESS) cmp_res = (cmp < 0);
+            else if (cmp_type == TOKEN_GREATER_EQUAL) cmp_res = (cmp >= 0);
+            else if (cmp_type == TOKEN_LESS_EQUAL) cmp_res = (cmp <= 0);
+        } else if (*out_str == NULL && rhs_str == NULL) {
+            if (cmp_type == TOKEN_EQUAL) cmp_res = (acc == rhs_val);
+            else if (cmp_type == TOKEN_NOT_EQUAL) cmp_res = (acc != rhs_val);
+            else if (cmp_type == TOKEN_GREATER) cmp_res = (acc > rhs_val);
+            else if (cmp_type == TOKEN_LESS) cmp_res = (acc < rhs_val);
+            else if (cmp_type == TOKEN_GREATER_EQUAL) cmp_res = (acc >= rhs_val);
+            else if (cmp_type == TOKEN_LESS_EQUAL) cmp_res = (acc <= rhs_val);
+        } else {
+            if (cmp_type == TOKEN_EQUAL) cmp_res = 0;
+            else if (cmp_type == TOKEN_NOT_EQUAL) cmp_res = 1;
+            else {
+                throw_error("InvalidOperandError", "Invalid comparison between string and non-string on line %d", current_executing_line);
+            }
+        }
+
+        if (*out_str) {
+            untrack_alloc(*out_str);
+            free(*out_str);
+            *out_str = NULL;
+        }
+        if (rhs_str) {
+            untrack_alloc(rhs_str);
+            free(rhs_str);
+        }
+
+        acc = cmp_res;
+        *out_type = VAR_BOOL;
+    } else {
+        freeToken(&op);
+    }
+
+    return acc;
+}
+
+int evaluate_expression_val(const char **cursor, char **out_str, int *out_type, Array **out_arr, Entity **out_ent) {
+    int acc = evaluate_comparison_val(cursor, out_str, out_type, out_arr, out_ent);
+
+    while (1) {
+        Token op = peekToken(cursor);
+        if (op.type == TOKEN_AMP || op.type == TOKEN_BOOL_AND || op.type == TOKEN_BOOL_NAND ||
+            op.type == TOKEN_BOOL_OR || op.type == TOKEN_BOOL_NOR ||
+            op.type == TOKEN_BOOL_XOR || op.type == TOKEN_BOOL_XNOR ||
+            op.type == TOKEN_BOOL_XAND || op.type == TOKEN_BOOL_XAMP) {
+            TokenType log_op = op.type;
             freeToken(&op);
             Token op_consumed = getNextToken(cursor);
             freeToken(&op_consumed);
 
             char *rhs_str = NULL;
             int rhs_type = VAR_INT;
-            int rhs_val = evaluate_expression(cursor, &rhs_str, &rhs_type);
+            Array *rhs_arr = NULL;
+            Entity *rhs_ent = NULL;
+            int rhs_val = evaluate_comparison_val(cursor, &rhs_str, &rhs_type, &rhs_arr, &rhs_ent);
 
-            int cmp_res = 0;
-            if (*out_str != NULL && rhs_str != NULL) {
-                int cmp = strcmp(*out_str, rhs_str);
-                if (cmp_type == TOKEN_EQUAL) cmp_res = (cmp == 0);
-                else if (cmp_type == TOKEN_NOT_EQUAL) cmp_res = (cmp != 0);
-                else if (cmp_type == TOKEN_GREATER) cmp_res = (cmp > 0);
-                else if (cmp_type == TOKEN_LESS) cmp_res = (cmp < 0);
-                else if (cmp_type == TOKEN_GREATER_EQUAL) cmp_res = (cmp >= 0);
-                else if (cmp_type == TOKEN_LESS_EQUAL) cmp_res = (cmp <= 0);
-            } else if (*out_str == NULL && rhs_str == NULL) {
-                if (cmp_type == TOKEN_EQUAL) cmp_res = (acc == rhs_val);
-                else if (cmp_type == TOKEN_NOT_EQUAL) cmp_res = (acc != rhs_val);
-                else if (cmp_type == TOKEN_GREATER) cmp_res = (acc > rhs_val);
-                else if (cmp_type == TOKEN_LESS) cmp_res = (acc < rhs_val);
-                else if (cmp_type == TOKEN_GREATER_EQUAL) cmp_res = (acc >= rhs_val);
-                else if (cmp_type == TOKEN_LESS_EQUAL) cmp_res = (acc <= rhs_val);
-            } else {
-                if (cmp_type == TOKEN_EQUAL) cmp_res = 0;
-                else if (cmp_type == TOKEN_NOT_EQUAL) cmp_res = 1;
-                else {
-                    throw_error("InvalidOperandError", "Invalid comparison between string and non-string on line %d", current_executing_line);
-                }
+            int lhs_truth = is_truthy(acc, *out_str, *out_type);
+            int rhs_truth = is_truthy(rhs_val, rhs_str, rhs_type);
+
+            int res = 0;
+            if (log_op == TOKEN_AMP) {
+                // & [normal AND]: true if both are true
+                res = (lhs_truth && rhs_truth);
+            } else if (log_op == TOKEN_BOOL_AND || log_op == TOKEN_BOOL_NAND) {
+                // and [negated AND / NAND]: true unless both are true
+                res = !(lhs_truth && rhs_truth);
+            } else if (log_op == TOKEN_BOOL_OR) {
+                // or [normal OR]: true if either is true
+                res = (lhs_truth || rhs_truth);
+            } else if (log_op == TOKEN_BOOL_NOR) {
+                // nor [negated OR / NOR]: true only if both are false
+                res = !(lhs_truth || rhs_truth);
+            } else if (log_op == TOKEN_BOOL_XOR) {
+                // xor [exclusive OR]: true if exactly one is true
+                res = (lhs_truth != rhs_truth);
+            } else if (log_op == TOKEN_BOOL_XNOR || log_op == TOKEN_BOOL_XAND || log_op == TOKEN_BOOL_XAMP) {
+                // xnor / xand / x& [equivalence]: true if both are true or both are false
+                res = (lhs_truth == rhs_truth);
             }
 
             if (*out_str) {
@@ -3195,7 +3291,7 @@ int evaluate_expression_val(const char **cursor, char **out_str, int *out_type, 
                 free(rhs_str);
             }
 
-            acc = cmp_res;
+            acc = res;
             *out_type = VAR_BOOL;
         } else {
             freeToken(&op);
@@ -3863,29 +3959,35 @@ void execute_line(const char *text, int line_num) {
                             nv->entity_val = out_ent ? out_ent : current_reply.entity_val;
                         }
                     }
-                } else if (after_mem.type == TOKEN_LPAREN) {
-                    LibraryDef *lib = find_library(t.value);
-                    if (lib) {
-                        if (strcmp(mem.value, "meta") == 0) {
-                            char l_name[64] = ""; strncpy(l_name, lib->name, 63);
-                            freeToken(&after_mem); freeToken(&mem); freeToken(&t);
-                            throw_error("VisibilityError", "Metadata is strictly internal to library '%s' on line %d", l_name, line_num);
-                        }
+                } else {
+                    int has_parens = 0;
+                    if (after_mem.type == TOKEN_LPAREN) {
+                        has_parens = 1;
                         freeToken(&after_mem);
                         Token lp = getNextToken(&cursor); freeToken(&lp);
+                    } else {
+                        freeToken(&after_mem);
+                    }
+                    LibraryDef *lib = find_library(t.value);
+                    if (lib) {
+                            char l_name[64] = ""; strncpy(l_name, lib->name, 63);
+                            freeToken(&mem); freeToken(&t);
+                            throw_error("VisibilityError", "Metadata is strictly internal to library '%s' on line %d", l_name, line_num);
+                        }
                         Routine *r = NULL;
                         for (int k = 0; k < lib->routine_count; k++) {
                             if (strcmp(lib->routines[k].name, mem.value) == 0) { r = &lib->routines[k]; break; }
                         }
                         if (!r) throw_error("SyntaxError", "Library '%s' has no routine '%s' on line %d", lib->name, mem.value, line_num);
                         call_routine(r, &cursor, line_num);
-                        Token rp = getNextToken(&cursor);
-                        if (rp.type != TOKEN_RPAREN) { freeToken(&rp); throw_error("SyntaxError", "Expected ')' on line %d", line_num); }
-                        freeToken(&rp);
+                        if (has_parens) {
+                            Token rp = getNextToken(&cursor);
+                            if (rp.type != TOKEN_RPAREN) { freeToken(&rp); throw_error("SyntaxError", "Expected ')' on line %d", line_num); }
+                            freeToken(&rp);
+                        }
                     } else {
                         Variable *ev = get_var(t.value);
                         if (ev && ev->type == VAR_ARRAY) {
-                            freeToken(&after_mem);
                             char *m_str = NULL;
                             int m_type = VAR_INT;
                             Array *m_arr = NULL;
@@ -3894,7 +3996,6 @@ void execute_line(const char *text, int line_num) {
                             freeToken(&mem);
                             continue;
                         } else if (ev && ev->type == VAR_STRING) {
-                            freeToken(&after_mem);
                             char *m_str = NULL;
                             int m_type = VAR_INT;
                             Array *m_arr = NULL;
@@ -3903,8 +4004,6 @@ void execute_line(const char *text, int line_num) {
                             freeToken(&mem);
                             continue;
                         } else if (ev && ev->type == VAR_ENTITY && ev->entity_val) {
-                            freeToken(&after_mem);
-                            Token lp = getNextToken(&cursor); freeToken(&lp);
                             Entity *ent = ev->entity_val;
                             if (strcmp(mem.value, "meta") == 0) {
                                 char c_name[64] = ""; strncpy(c_name, ent->class_name, 63);
@@ -3917,17 +4016,15 @@ void execute_line(const char *text, int line_num) {
                             }
                             if (!m) throw_error("EntityError", "Entity '%s' has no method '%s' on line %d", ent->class_name, mem.value, line_num);
                             call_routine(m, &cursor, line_num);
-                            Token rp = getNextToken(&cursor);
-                            if (rp.type != TOKEN_RPAREN) { freeToken(&rp); throw_error("SyntaxError", "Expected ')' on line %d", line_num); }
-                            freeToken(&rp);
+                            if (has_parens) {
+                                Token rp = getNextToken(&cursor);
+                                if (rp.type != TOKEN_RPAREN) { freeToken(&rp); throw_error("SyntaxError", "Expected ')' on line %d", line_num); }
+                                freeToken(&rp);
+                            }
                         } else {
-                            freeToken(&after_mem);
                             throw_error("UndefinedVariableError", "Variable '%s' is not an entity or object on line %d", t.value, line_num);
                         }
                     }
-                } else {
-                    freeToken(&after_mem);
-                    throw_error("SyntaxError", "Unexpected token after member on line %d", line_num);
                 }
                 freeToken(&mem);
             }
