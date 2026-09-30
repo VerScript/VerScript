@@ -3970,6 +3970,7 @@ void execute_line(const char *text, int line_num) {
                     }
                     LibraryDef *lib = find_library(t.value);
                     if (lib) {
+                        if (strcmp(mem.value, "meta") == 0) {
                             char l_name[64] = ""; strncpy(l_name, lib->name, 63);
                             freeToken(&mem); freeToken(&t);
                             throw_error("VisibilityError", "Metadata is strictly internal to library '%s' on line %d", l_name, line_num);
