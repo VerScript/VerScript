@@ -71,29 +71,37 @@ display "After reverse: " + myArr[0] + ", " + myArr[1] + ", " + myArr[2]
 myArr.clear()
 display "After clear isEmpty: " + myArr.isEmpty()
 
-display "=== Testing Load Core Library: Math ===" ?color=#38bdf8
-load Math
+display "=== Testing Load Core Library: Stats ===" ?color=#38bdf8
+load Stats
 
-set absVal: Math.abs(-42)
-display "Math.abs(-42): " + absVal
+set sumVal: Stats.sum([10, 20, 30])
+display "Stats.sum([10, 20, 30]): " + sumVal
 
-set minVal: Math.min(10, 20)
-display "Math.min(10, 20): " + minVal
+set meanVal: Stats.mean([10, 20, 30])
+display "Stats.mean([10, 20, 30]): " + meanVal
 
-set maxVal: Math.max(10, 20)
-display "Math.max(10, 20): " + maxVal
+display "=== Testing Native Math Syntax ===" ?color=#38bdf8
+set absVal: |-42|
+display "Native |-42|: " + absVal
 
-set clampVal: Math.clamp(50, 0, 30)
-display "Math.clamp(50, 0, 30): " + clampVal
+set minVal: min 10 20
+display "Native min 10 20: " + minVal
 
-set gcdVal: Math.gcd(24, 36)
-display "Math.gcd(24, 36): " + gcdVal
+set maxVal: max 10 20
+display "Native max 10 20: " + maxVal
 
-set lcmVal: Math.lcm(12, 18)
-display "Math.lcm(12, 18): " + lcmVal
+set clampVal: clamp 50 0 30
+display "Native clamp 50 0 30: " + clampVal
 
-set powVal: Math.pow(2, 5)
-display "Math.pow(2, 5): " + powVal
+set gcdVal: gcd 24 36
+display "Native gcd 24 36: " + gcdVal
+
+set lcmVal: lcm 12 18
+display "Native lcm 12 18: " + lcmVal
+
+set powVal: 2 ^ 5
+display "Native 2 ^ 5: " + powVal
+
 
 display "=== Testing Load User Library: custom.lib.vrs ===" ?color=#38bdf8
 load "./tests/custom.lib.vrs"

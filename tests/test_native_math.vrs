@@ -1,0 +1,96 @@
+! Test Native Math Operators, Functions, and Constants in VerScript
+
+display "--- Testing Absolute Values (|x|) ---"
+set neg: -42
+display |-42|
+display |neg|
+display |10 - 25|
+
+display "--- Testing Exponentiation (^) ---"
+display 2 ^ 8
+display 3 ^ 3
+display 10 ^ 4
+
+display "--- Testing Factorial (!) ---"
+display 0!
+display 1!
+display 5!
+display 6!
+
+display "--- Testing Modulo (%) and Integer Division (//) ---"
+display 17 % 5
+display 17 // 5
+display 100 % 30
+display 100 // 30
+
+display "--- Testing Roots (sqrt, rt) ---"
+display sqrt 144
+display sqrt 64
+display rt 3 27
+display rt 2 100
+
+display "--- Testing Min, Max, and Bounds ---"
+display min 15 42
+display max 15 42
+display min [10, 20, 5, 40]
+display max [10, 20, 5, 40]
+
+display "--- Testing Clamping ---"
+display clamp 150 0 100
+display clamp -20 0 100
+display clamp 50 0 100
+display clamp 150 from 0 to 100
+display clamp -20 from 0 to 100
+
+display "--- Testing Signum (sign, sgn) ---"
+display sign -99
+display sign 0
+display sign 99
+display sgn -50
+display sgn 50
+
+display "--- Testing Parity (isEven, isOdd, is even, is odd) ---"
+display isEven 4
+display isEven 5
+display isOdd 4
+display isOdd 5
+display 4 is even
+display 5 is even
+display 4 is odd
+display 5 is odd
+
+display "--- Testing Division and Remainder (divRem) ---"
+set dr: divRem 17 5
+display dr[0]
+display dr[1]
+
+display "--- Testing Rounding and Precision ---"
+display floor 5
+display ceil 5
+display round 5 2
+
+display "--- Testing Trigonometry and Logarithms ---"
+display sinDeg 90
+display cosDeg 0
+display log 100
+display log 2 8
+display log2 8
+display exp 1
+
+display "--- Testing GCD and LCM ---"
+display gcd 12 18
+display hcf 12 18
+display lcm 12 18
+display gcd [24, 36, 60]
+
+display "--- Testing Interpolation (lerp) ---"
+display lerp 0 100 2
+display lerp from 0 to 100 by 2
+
+display "--- Testing Constants ---"
+display pi
+display tau
+display phi
+display inf
+
+display "--- Native Math Tests Completed Successfully ---"

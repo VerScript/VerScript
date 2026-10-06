@@ -46,11 +46,9 @@ display x < y & y = 20
 display x > y or y = 20
 
 display "--- Testing Unbracketed Core Library Calls ---"
-load Math
-set abs_val: (Math.abs -42)
-display abs_val
-set max_val: (Math.max 15 25)
-display max_val
+load Stats
+set mean_val: (Stats.mean [10, 20, 30])
+display mean_val
 
 display "--- Testing Unbracketed Custom Routine Calls ---"
 def func add_nums a b

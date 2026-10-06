@@ -4,6 +4,13 @@
 #include <ctype.h>
 #include <stdarg.h>
 #include <setjmp.h>
+#ifndef _USE_MATH_DEFINES
+#define _USE_MATH_DEFINES
+#endif
+#include <math.h>
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 #include "../include/opcodes.h"
 #include "../include/lexer.h"
 
@@ -992,70 +999,6 @@ Array* string_split(const char *str, const char *sep) {
 // EMBEDDED STANDARD RELEASE CORE LIBRARIES
 // ═══════════════════════════════════════════════════════════════════
 
-static const char *CORE_LIB_MATH =
-    "lib Math\n"
-    "  const:\n"
-    "    goldenRatio: 16180\n"
-    "    maxInt: 2147483647\n"
-    "    minInt: -2147483648\n"
-    "  dynamic:\n"
-    "    def func abs x\n"
-    "      if x < 0 then\n"
-    "        reply 0 - x\n"
-    "      reply x\n"
-    "    def func min a b\n"
-    "      if a < b then\n"
-    "        reply a\n"
-    "      reply b\n"
-    "    def func max a b\n"
-    "      if a > b then\n"
-    "        reply a\n"
-    "      reply b\n"
-    "    def func clamp val low high\n"
-    "      if val < low then\n"
-    "        reply low\n"
-    "      if val > high then\n"
-    "        reply high\n"
-    "      reply val\n"
-    "    def func sign x\n"
-    "      if x < 0 then\n"
-    "        reply -1\n"
-    "      if x > 0 then\n"
-    "        reply 1\n"
-    "      reply 0\n"
-    "    def func pow base exp\n"
-    "      set result: 1\n"
-    "      iterate i from 1 to exp step 1\n"
-    "        set result: result * base\n"
-    "      reply result\n"
-    "    def func divRem a b\n"
-    "      set q: a / b\n"
-    "      set r: a - (q * b)\n"
-    "      reply [q, r]\n"
-    "    def func isEven n\n"
-    "      set dr: (divRem n 2)\n"
-    "      reply dr[1] = 0\n"
-    "    def func isOdd n\n"
-    "      set dr: (divRem n 2)\n"
-    "      reply dr[1] != 0\n"
-    "    def func gcd a b\n"
-    "      set x: (abs a)\n"
-    "      set y: (abs b)\n"
-    "      while y != 0\n"
-    "        set temp: y\n"
-    "        set dr: (divRem x y)\n"
-    "        set y: dr[1]\n"
-    "        set x: temp\n"
-    "      reply x\n"
-    "    def func lcm a b\n"
-    "      if a = 0 then\n"
-    "        reply 0\n"
-    "      if b = 0 then\n"
-    "        reply 0\n"
-    "      set g: (gcd a b)\n"
-    "      set prod: a * b\n"
-    "      reply (abs prod) / g\n";
-
 static const char *CORE_LIB_STATS =
     "lib Stats\n"
     "  meta:\n"
@@ -1113,7 +1056,6 @@ static const char *CORE_LIB_ASSERT =
     "        throw \"AssertionError: \" + message\n";
 
 const char* get_embedded_core_lib(const char *name) {
-    if (strcmp(name, "Math") == 0) return CORE_LIB_MATH;
     if (strcmp(name, "Stats") == 0) return CORE_LIB_STATS;
     if (strcmp(name, "Assert") == 0) return CORE_LIB_ASSERT;
     return NULL;
@@ -2405,6 +2347,351 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
         } else {
             freeToken(&peek);
         }
+    } else if (t.type == TOKEN_PIPE) {
+        char *sub_str = NULL;
+        int sub_type = VAR_INT;
+        Array *sub_arr = NULL;
+        Entity *sub_ent = NULL;
+        int sub_val = evaluate_expression_val(cursor, &sub_str, &sub_type, &sub_arr, &sub_ent);
+        Token close_pipe = getNextToken(cursor);
+        if (close_pipe.type != TOKEN_PIPE) {
+            freeToken(&close_pipe);
+            throw_error("SyntaxError", "Expected closing '|' on line %d", current_executing_line);
+        }
+        freeToken(&close_pipe);
+        if (sub_str) { untrack_alloc(sub_str); free(sub_str); }
+        acc = abs(sub_val) * sign;
+        *out_type = VAR_INT;
+    } else if (t.type == TOKEN_SQRT) {
+        char *arg_str = NULL;
+        int arg_type = VAR_INT;
+        int val = evaluate_operand_val(cursor, &arg_str, &arg_type, NULL, NULL);
+        if (arg_str) { untrack_alloc(arg_str); free(arg_str); }
+        if (val < 0) throw_error("DomainError", "Square root of negative number on line %d", current_executing_line);
+        acc = (int)sqrt((double)val) * sign;
+        *out_type = VAR_INT;
+    } else if (t.type == TOKEN_RT) {
+        char *s1 = NULL, *s2 = NULL;
+        int t1 = VAR_INT, t2 = VAR_INT;
+        int r = evaluate_operand_val(cursor, &s1, &t1, NULL, NULL);
+        int v = evaluate_operand_val(cursor, &s2, &t2, NULL, NULL);
+        if (s1) { untrack_alloc(s1); free(s1); }
+        if (s2) { untrack_alloc(s2); free(s2); }
+        if (r == 0) throw_error("DivisionByZeroError", "Zero root on line %d", current_executing_line);
+        acc = ((int)round(pow((double)v, 1.0 / (double)r))) * sign;
+        *out_type = VAR_INT;
+    } else if (t.type == TOKEN_MIN) {
+        Token p = peekToken(cursor);
+        if (p.type == TOKEN_LBRACKET) {
+            freeToken(&p);
+            char *s = NULL; int ty = VAR_ARRAY; Array *arr = NULL;
+            evaluate_operand_val(cursor, &s, &ty, &arr, NULL);
+            if (s) { untrack_alloc(s); free(s); }
+            if (arr && arr->count > 0) {
+                int m = arr->items[0].int_val;
+                for (int i = 1; i < arr->count; i++) {
+                    if (arr->items[i].int_val < m) m = arr->items[i].int_val;
+                }
+                acc = m * sign;
+            } else {
+                acc = 0;
+            }
+        } else {
+            freeToken(&p);
+            char *s1 = NULL, *s2 = NULL; int t1 = VAR_INT, t2 = VAR_INT;
+            int a = evaluate_operand_val(cursor, &s1, &t1, NULL, NULL);
+            int b = evaluate_operand_val(cursor, &s2, &t2, NULL, NULL);
+            if (s1) { untrack_alloc(s1); free(s1); }
+            if (s2) { untrack_alloc(s2); free(s2); }
+            acc = ((a < b) ? a : b) * sign;
+        }
+        *out_type = VAR_INT;
+    } else if (t.type == TOKEN_MAX) {
+        Token p = peekToken(cursor);
+        if (p.type == TOKEN_LBRACKET) {
+            freeToken(&p);
+            char *s = NULL; int ty = VAR_ARRAY; Array *arr = NULL;
+            evaluate_operand_val(cursor, &s, &ty, &arr, NULL);
+            if (s) { untrack_alloc(s); free(s); }
+            if (arr && arr->count > 0) {
+                int m = arr->items[0].int_val;
+                for (int i = 1; i < arr->count; i++) {
+                    if (arr->items[i].int_val > m) m = arr->items[i].int_val;
+                }
+                acc = m * sign;
+            } else {
+                acc = 0;
+            }
+        } else {
+            freeToken(&p);
+            char *s1 = NULL, *s2 = NULL; int t1 = VAR_INT, t2 = VAR_INT;
+            int a = evaluate_operand_val(cursor, &s1, &t1, NULL, NULL);
+            int b = evaluate_operand_val(cursor, &s2, &t2, NULL, NULL);
+            if (s1) { untrack_alloc(s1); free(s1); }
+            if (s2) { untrack_alloc(s2); free(s2); }
+            acc = ((a > b) ? a : b) * sign;
+        }
+        *out_type = VAR_INT;
+    } else if (t.type == TOKEN_CLAMP) {
+        char *s0 = NULL; int t0 = VAR_INT;
+        int val = evaluate_operand_val(cursor, &s0, &t0, NULL, NULL);
+        if (s0) { untrack_alloc(s0); free(s0); }
+        Token p = peekToken(cursor);
+        int low = 0, high = 0;
+        if (p.type == TOKEN_FROM) {
+            freeToken(&p);
+            Token from_tok = getNextToken(cursor); freeToken(&from_tok);
+            char *s1 = NULL; int t1 = VAR_INT;
+            low = evaluate_operand_val(cursor, &s1, &t1, NULL, NULL);
+            if (s1) { untrack_alloc(s1); free(s1); }
+            Token to_tok = getNextToken(cursor);
+            if (to_tok.type != TOKEN_TO) {
+                freeToken(&to_tok);
+                throw_error("SyntaxError", "Expected 'to' in clamp on line %d", current_executing_line);
+            }
+            freeToken(&to_tok);
+            char *s2 = NULL; int t2 = VAR_INT;
+            high = evaluate_operand_val(cursor, &s2, &t2, NULL, NULL);
+            if (s2) { untrack_alloc(s2); free(s2); }
+        } else {
+            freeToken(&p);
+            char *s1 = NULL, *s2 = NULL; int t1 = VAR_INT, t2 = VAR_INT;
+            low = evaluate_operand_val(cursor, &s1, &t1, NULL, NULL);
+            high = evaluate_operand_val(cursor, &s2, &t2, NULL, NULL);
+            if (s1) { untrack_alloc(s1); free(s1); }
+            if (s2) { untrack_alloc(s2); free(s2); }
+        }
+        acc = ((val < low) ? low : (val > high ? high : val)) * sign;
+        *out_type = VAR_INT;
+    } else if (t.type == TOKEN_SIGN || t.type == TOKEN_SGN) {
+        char *s = NULL; int ty = VAR_INT;
+        int val = evaluate_operand_val(cursor, &s, &ty, NULL, NULL);
+        if (s) { untrack_alloc(s); free(s); }
+        acc = ((val < 0) ? -1 : (val > 0 ? 1 : 0)) * sign;
+        *out_type = VAR_INT;
+    } else if (t.type == TOKEN_DIVREM) {
+        char *s1 = NULL, *s2 = NULL; int t1 = VAR_INT, t2 = VAR_INT;
+        int a = evaluate_operand_val(cursor, &s1, &t1, NULL, NULL);
+        int b = evaluate_operand_val(cursor, &s2, &t2, NULL, NULL);
+        if (s1) { untrack_alloc(s1); free(s1); }
+        if (s2) { untrack_alloc(s2); free(s2); }
+        if (b == 0) throw_error("DivisionByZeroError", "Division by zero in divRem on line %d", current_executing_line);
+        Array *arr = create_array();
+        Variable vq, vr;
+        memset(&vq, 0, sizeof(vq)); vq.type = VAR_INT; vq.int_val = a / b;
+        memset(&vr, 0, sizeof(vr)); vr.type = VAR_INT; vr.int_val = a % b;
+        array_append(arr, &vq);
+        array_append(arr, &vr);
+        *out_type = VAR_ARRAY;
+        if (out_arr) *out_arr = arr;
+        current_reply.array_val = arr;
+        *out_str = array_to_string(arr);
+        acc = 0;
+    } else if (t.type == TOKEN_ISEVEN || t.type == TOKEN_EVEN) {
+        char *s = NULL; int ty = VAR_INT;
+        int val = evaluate_operand_val(cursor, &s, &ty, NULL, NULL);
+        if (s) { untrack_alloc(s); free(s); }
+        acc = (val % 2 == 0);
+        *out_type = VAR_BOOL;
+    } else if (t.type == TOKEN_ISODD || t.type == TOKEN_ODD) {
+        char *s = NULL; int ty = VAR_INT;
+        int val = evaluate_operand_val(cursor, &s, &ty, NULL, NULL);
+        if (s) { untrack_alloc(s); free(s); }
+        acc = (val % 2 != 0);
+        *out_type = VAR_BOOL;
+    } else if (t.type == TOKEN_GCD || t.type == TOKEN_HCF) {
+        Token p = peekToken(cursor);
+        if (p.type == TOKEN_LBRACKET) {
+            freeToken(&p);
+            char *s = NULL; int ty = VAR_ARRAY; Array *arr = NULL;
+            evaluate_operand_val(cursor, &s, &ty, &arr, NULL);
+            if (s) { untrack_alloc(s); free(s); }
+            if (arr && arr->count > 0) {
+                int g = abs(arr->items[0].int_val);
+                for (int i = 1; i < arr->count; i++) {
+                    int y = abs(arr->items[i].int_val);
+                    while (y != 0) { int tmp = y; y = g % y; g = tmp; }
+                }
+                acc = g * sign;
+            } else {
+                acc = 0;
+            }
+        } else {
+            freeToken(&p);
+            char *s1 = NULL, *s2 = NULL; int t1 = VAR_INT, t2 = VAR_INT;
+            int a = abs(evaluate_operand_val(cursor, &s1, &t1, NULL, NULL));
+            int b = abs(evaluate_operand_val(cursor, &s2, &t2, NULL, NULL));
+            if (s1) { untrack_alloc(s1); free(s1); }
+            if (s2) { untrack_alloc(s2); free(s2); }
+            while (b != 0) { int tmp = b; b = a % b; a = tmp; }
+            acc = a * sign;
+        }
+        *out_type = VAR_INT;
+    } else if (t.type == TOKEN_LCM) {
+        char *s1 = NULL, *s2 = NULL; int t1 = VAR_INT, t2 = VAR_INT;
+        int a = abs(evaluate_operand_val(cursor, &s1, &t1, NULL, NULL));
+        int b = abs(evaluate_operand_val(cursor, &s2, &t2, NULL, NULL));
+        if (s1) { untrack_alloc(s1); free(s1); }
+        if (s2) { untrack_alloc(s2); free(s2); }
+        if (a == 0 || b == 0) {
+            acc = 0;
+        } else {
+            int x = a, y = b;
+            while (y != 0) { int tmp = y; y = x % y; x = tmp; }
+            acc = ((a / x) * b) * sign;
+        }
+        *out_type = VAR_INT;
+    } else if (t.type == TOKEN_FLOOR || t.type == TOKEN_CEIL || t.type == TOKEN_ROUND) {
+        char *s = NULL; int ty = VAR_INT;
+        int val = evaluate_operand_val(cursor, &s, &ty, NULL, NULL);
+        if (s) { untrack_alloc(s); free(s); }
+        if (t.type == TOKEN_ROUND) {
+            Token peek2 = peekToken(cursor);
+            if (peek2.type == TOKEN_NUMBER || peek2.type == TOKEN_IDENTIFIER) {
+                freeToken(&peek2);
+                char *s2 = NULL; int ty2 = VAR_INT;
+                int prec = evaluate_operand_val(cursor, &s2, &ty2, NULL, NULL);
+                if (s2) { untrack_alloc(s2); free(s2); }
+                (void)prec;
+            } else {
+                freeToken(&peek2);
+            }
+        }
+        acc = val * sign;
+        *out_type = VAR_INT;
+    } else if (t.type == TOKEN_SIN) {
+        char *s = NULL; int ty = VAR_INT;
+        int val = evaluate_operand_val(cursor, &s, &ty, NULL, NULL);
+        if (s) { untrack_alloc(s); free(s); }
+        acc = ((int)round(sin((double)val))) * sign;
+        *out_type = VAR_INT;
+    } else if (t.type == TOKEN_COS) {
+        char *s = NULL; int ty = VAR_INT;
+        int val = evaluate_operand_val(cursor, &s, &ty, NULL, NULL);
+        if (s) { untrack_alloc(s); free(s); }
+        acc = ((int)round(cos((double)val))) * sign;
+        *out_type = VAR_INT;
+    } else if (t.type == TOKEN_TAN) {
+        char *s = NULL; int ty = VAR_INT;
+        int val = evaluate_operand_val(cursor, &s, &ty, NULL, NULL);
+        if (s) { untrack_alloc(s); free(s); }
+        acc = ((int)round(tan((double)val))) * sign;
+        *out_type = VAR_INT;
+    } else if (t.type == TOKEN_HYPOT) {
+        char *s1 = NULL, *s2 = NULL; int t1 = VAR_INT, t2 = VAR_INT;
+        int a = evaluate_operand_val(cursor, &s1, &t1, NULL, NULL);
+        int b = evaluate_operand_val(cursor, &s2, &t2, NULL, NULL);
+        if (s1) { untrack_alloc(s1); free(s1); }
+        if (s2) { untrack_alloc(s2); free(s2); }
+        acc = ((int)round(hypot((double)a, (double)b))) * sign;
+        *out_type = VAR_INT;
+    } else if (t.type == TOKEN_DEGTORAD) {
+        char *s = NULL; int ty = VAR_INT;
+        int deg = evaluate_operand_val(cursor, &s, &ty, NULL, NULL);
+        if (s) { untrack_alloc(s); free(s); }
+        acc = ((int)round((double)deg * M_PI / 180.0)) * sign;
+        *out_type = VAR_INT;
+    } else if (t.type == TOKEN_RADTODEG) {
+        char *s = NULL; int ty = VAR_INT;
+        int rad = evaluate_operand_val(cursor, &s, &ty, NULL, NULL);
+        if (s) { untrack_alloc(s); free(s); }
+        acc = ((int)round((double)rad * 180.0 / M_PI)) * sign;
+        *out_type = VAR_INT;
+    } else if (t.type == TOKEN_SINDEG) {
+        char *s = NULL; int ty = VAR_INT;
+        int deg = evaluate_operand_val(cursor, &s, &ty, NULL, NULL);
+        if (s) { untrack_alloc(s); free(s); }
+        acc = ((int)round(sin((double)deg * M_PI / 180.0))) * sign;
+        *out_type = VAR_INT;
+    } else if (t.type == TOKEN_COSDEG) {
+        char *s = NULL; int ty = VAR_INT;
+        int deg = evaluate_operand_val(cursor, &s, &ty, NULL, NULL);
+        if (s) { untrack_alloc(s); free(s); }
+        acc = ((int)round(cos((double)deg * M_PI / 180.0))) * sign;
+        *out_type = VAR_INT;
+    } else if (t.type == TOKEN_LN) {
+        char *s = NULL; int ty = VAR_INT;
+        int val = evaluate_operand_val(cursor, &s, &ty, NULL, NULL);
+        if (s) { untrack_alloc(s); free(s); }
+        acc = ((val > 0) ? (int)round(log((double)val)) : 0) * sign;
+        *out_type = VAR_INT;
+    } else if (t.type == TOKEN_LOG) {
+        char *s = NULL; int ty = VAR_INT;
+        int val = evaluate_operand_val(cursor, &s, &ty, NULL, NULL);
+        if (s) { untrack_alloc(s); free(s); }
+        Token peek2 = peekToken(cursor);
+        if (peek2.type == TOKEN_NUMBER || peek2.type == TOKEN_IDENTIFIER || peek2.type == TOKEN_LPAREN || peek2.type == TOKEN_PIPE) {
+            freeToken(&peek2);
+            char *s2 = NULL; int ty2 = VAR_INT;
+            int arg2 = evaluate_operand_val(cursor, &s2, &ty2, NULL, NULL);
+            if (s2) { untrack_alloc(s2); free(s2); }
+            if (val > 1 && arg2 > 0) {
+                acc = ((int)round(log((double)arg2) / log((double)val))) * sign;
+            } else {
+                acc = 0;
+            }
+        } else {
+            freeToken(&peek2);
+            acc = ((val > 0) ? (int)round(log10((double)val)) : 0) * sign;
+        }
+        *out_type = VAR_INT;
+    } else if (t.type == TOKEN_LOG2) {
+        char *s = NULL; int ty = VAR_INT;
+        int val = evaluate_operand_val(cursor, &s, &ty, NULL, NULL);
+        if (s) { untrack_alloc(s); free(s); }
+        acc = ((val > 0) ? (int)round(log2((double)val)) : 0) * sign;
+        *out_type = VAR_INT;
+    } else if (t.type == TOKEN_EXP) {
+        char *s = NULL; int ty = VAR_INT;
+        int val = evaluate_operand_val(cursor, &s, &ty, NULL, NULL);
+        if (s) { untrack_alloc(s); free(s); }
+        acc = ((int)round(exp((double)val))) * sign;
+        *out_type = VAR_INT;
+    } else if (t.type == TOKEN_LERP) {
+        Token p = peekToken(cursor);
+        int a = 0, b = 0, t_val = 0;
+        if (p.type == TOKEN_FROM) {
+            freeToken(&p);
+            Token from_tok = getNextToken(cursor); freeToken(&from_tok);
+            char *s1 = NULL; int t1 = VAR_INT;
+            a = evaluate_operand_val(cursor, &s1, &t1, NULL, NULL);
+            if (s1) { untrack_alloc(s1); free(s1); }
+            Token to_tok = getNextToken(cursor);
+            if (to_tok.type != TOKEN_TO) { freeToken(&to_tok); throw_error("SyntaxError", "Expected 'to' in lerp on line %d", current_executing_line); }
+            freeToken(&to_tok);
+            char *s2 = NULL; int t2 = VAR_INT;
+            b = evaluate_operand_val(cursor, &s2, &t2, NULL, NULL);
+            if (s2) { untrack_alloc(s2); free(s2); }
+            Token by_tok = getNextToken(cursor);
+            if (by_tok.type != TOKEN_BY) { freeToken(&by_tok); throw_error("SyntaxError", "Expected 'by' in lerp on line %d", current_executing_line); }
+            freeToken(&by_tok);
+            char *s3 = NULL; int t3 = VAR_INT;
+            t_val = evaluate_operand_val(cursor, &s3, &t3, NULL, NULL);
+            if (s3) { untrack_alloc(s3); free(s3); }
+        } else {
+            freeToken(&p);
+            char *s1 = NULL, *s2 = NULL, *s3 = NULL; int t1 = VAR_INT, t2 = VAR_INT, t3 = VAR_INT;
+            a = evaluate_operand_val(cursor, &s1, &t1, NULL, NULL);
+            b = evaluate_operand_val(cursor, &s2, &t2, NULL, NULL);
+            t_val = evaluate_operand_val(cursor, &s3, &t3, NULL, NULL);
+            if (s1) { untrack_alloc(s1); free(s1); }
+            if (s2) { untrack_alloc(s2); free(s2); }
+            if (s3) { untrack_alloc(s3); free(s3); }
+        }
+        acc = (a + (b - a) * t_val) * sign;
+        *out_type = VAR_INT;
+    } else if (t.type == TOKEN_PI_CONST) {
+        acc = 3 * sign;
+        *out_type = VAR_INT;
+    } else if (t.type == TOKEN_TAU_CONST) {
+        acc = 6 * sign;
+        *out_type = VAR_INT;
+    } else if (t.type == TOKEN_PHI_CONST) {
+        acc = 16180 * sign;
+        *out_type = VAR_INT;
+    } else if (t.type == TOKEN_INF_CONST) {
+        acc = 2147483647 * sign;
+        *out_type = VAR_INT;
     } else if (t.type == TOKEN_LBRACKET) {
         // Array literal [item1, item2, ...]
         Array *arr = create_array();
@@ -3071,6 +3358,21 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
         freeToken(&next_mem);
     }
 
+    Token peek_fact = peekToken(cursor);
+    if (peek_fact.type == TOKEN_FACTORIAL) {
+        freeToken(&peek_fact);
+        Token fact_tok = getNextToken(cursor);
+        freeToken(&fact_tok);
+        if (*out_type == VAR_INT) {
+            if (acc < 0) throw_error("DomainError", "Factorial of negative integer on line %d", current_executing_line);
+            long long f = 1;
+            for (int i = 2; i <= acc; i++) f *= i;
+            acc = (int)f;
+        }
+    } else {
+        freeToken(&peek_fact);
+    }
+
     freeToken(&t);
     return acc;
 }
@@ -3079,12 +3381,36 @@ int evaluate_operand(const char **cursor, char **out_str, int *out_type) {
     return evaluate_operand_val(cursor, out_str, out_type, NULL, NULL);
 }
 
-static int evaluate_arithmetic_val(const char **cursor, char **out_str, int *out_type, Array **out_arr, Entity **out_ent) {
+static int evaluate_power_val(const char **cursor, char **out_str, int *out_type, Array **out_arr, Entity **out_ent) {
     int acc = evaluate_operand_val(cursor, out_str, out_type, out_arr, out_ent);
+    Token op = peekToken(cursor);
+    if (op.type == TOKEN_CARET) {
+        freeToken(&op);
+        Token op_consumed = getNextToken(cursor);
+        freeToken(&op_consumed);
+
+        char *rhs_str = NULL;
+        int rhs_type = VAR_INT;
+        Array *rhs_arr = NULL;
+        Entity *rhs_ent = NULL;
+        // Right-associative exponentiation
+        int rhs_val = evaluate_power_val(cursor, &rhs_str, &rhs_type, &rhs_arr, &rhs_ent);
+        if (rhs_str) { untrack_alloc(rhs_str); free(rhs_str); }
+        acc = (int)round(pow((double)acc, (double)rhs_val));
+        *out_type = VAR_INT;
+    } else {
+        freeToken(&op);
+    }
+    return acc;
+}
+
+static int evaluate_multiplicative_val(const char **cursor, char **out_str, int *out_type, Array **out_arr, Entity **out_ent) {
+    int acc = evaluate_power_val(cursor, out_str, out_type, out_arr, out_ent);
 
     while (1) {
         Token op = peekToken(cursor);
-        if (op.type == TOKEN_PLUS || op.type == TOKEN_MINUS || op.type == TOKEN_STAR || op.type == TOKEN_SLASH) {
+        if (op.type == TOKEN_STAR || op.type == TOKEN_SLASH || op.type == TOKEN_PERCENT || op.type == TOKEN_SLASH_SLASH) {
+            TokenType op_type = op.type;
             freeToken(&op);
             Token op_consumed = getNextToken(cursor);
             freeToken(&op_consumed);
@@ -3093,9 +3419,73 @@ static int evaluate_arithmetic_val(const char **cursor, char **out_str, int *out
             int rhs_type = VAR_INT;
             Array *rhs_arr = NULL;
             Entity *rhs_ent = NULL;
-            int rhs_val = evaluate_operand_val(cursor, &rhs_str, &rhs_type, &rhs_arr, &rhs_ent);
+            int rhs_val = evaluate_power_val(cursor, &rhs_str, &rhs_type, &rhs_arr, &rhs_ent);
 
-            if (op.type == TOKEN_PLUS) {
+            if (op_type == TOKEN_STAR) {
+                if (rhs_str || (*out_type != VAR_INT && *out_type != VAR_BOOL)) {
+                    throw_error("InvalidOperandError", "Invalid operands for operator '*' on line %d", current_executing_line);
+                }
+                acc *= rhs_val;
+                *out_type = VAR_INT;
+            } else if (op_type == TOKEN_SLASH) {
+                if (rhs_str || (*out_type != VAR_INT && *out_type != VAR_BOOL)) {
+                    throw_error("InvalidOperandError", "Invalid operands for operator '/' on line %d", current_executing_line);
+                }
+                if (rhs_val != 0) {
+                    acc /= rhs_val;
+                    *out_type = VAR_INT;
+                } else {
+                    throw_error("DivisionByZeroError", "Division by zero on line %d", current_executing_line);
+                }
+            } else if (op_type == TOKEN_PERCENT) {
+                if (rhs_str || (*out_type != VAR_INT && *out_type != VAR_BOOL)) {
+                    throw_error("InvalidOperandError", "Invalid operands for operator '%%' on line %d", current_executing_line);
+                }
+                if (rhs_val != 0) {
+                    acc %= rhs_val;
+                    *out_type = VAR_INT;
+                } else {
+                    throw_error("DivisionByZeroError", "Modulo by zero on line %d", current_executing_line);
+                }
+            } else if (op_type == TOKEN_SLASH_SLASH) {
+                if (rhs_str || (*out_type != VAR_INT && *out_type != VAR_BOOL)) {
+                    throw_error("InvalidOperandError", "Invalid operands for operator '//' on line %d", current_executing_line);
+                }
+                if (rhs_val != 0) {
+                    acc /= rhs_val;
+                    *out_type = VAR_INT;
+                } else {
+                    throw_error("DivisionByZeroError", "Integer division by zero on line %d", current_executing_line);
+                }
+            }
+            if (rhs_str) { untrack_alloc(rhs_str); free(rhs_str); }
+        } else {
+            freeToken(&op);
+            break;
+        }
+    }
+
+    return acc;
+}
+
+static int evaluate_arithmetic_val(const char **cursor, char **out_str, int *out_type, Array **out_arr, Entity **out_ent) {
+    int acc = evaluate_multiplicative_val(cursor, out_str, out_type, out_arr, out_ent);
+
+    while (1) {
+        Token op = peekToken(cursor);
+        if (op.type == TOKEN_PLUS || op.type == TOKEN_MINUS) {
+            TokenType op_type = op.type;
+            freeToken(&op);
+            Token op_consumed = getNextToken(cursor);
+            freeToken(&op_consumed);
+
+            char *rhs_str = NULL;
+            int rhs_type = VAR_INT;
+            Array *rhs_arr = NULL;
+            Entity *rhs_ent = NULL;
+            int rhs_val = evaluate_multiplicative_val(cursor, &rhs_str, &rhs_type, &rhs_arr, &rhs_ent);
+
+            if (op_type == TOKEN_PLUS) {
                 if (*out_str != NULL && rhs_str != NULL) {
                     size_t len1 = strlen(*out_str);
                     size_t len2 = strlen(rhs_str);
@@ -3144,28 +3534,12 @@ static int evaluate_arithmetic_val(const char **cursor, char **out_str, int *out
                     acc += rhs_val;
                     *out_type = VAR_INT;
                 }
-            } else if (op.type == TOKEN_MINUS) {
+            } else if (op_type == TOKEN_MINUS) {
                 if (rhs_str || (*out_type != VAR_INT && *out_type != VAR_BOOL)) {
                     throw_error("InvalidOperandError", "Invalid operands for operator '-' on line %d", current_executing_line);
                 }
                 acc -= rhs_val;
                 *out_type = VAR_INT;
-            } else if (op.type == TOKEN_STAR) {
-                if (rhs_str || (*out_type != VAR_INT && *out_type != VAR_BOOL)) {
-                    throw_error("InvalidOperandError", "Invalid operands for operator '*' on line %d", current_executing_line);
-                }
-                acc *= rhs_val;
-                *out_type = VAR_INT;
-            } else if (op.type == TOKEN_SLASH) {
-                if (rhs_str || (*out_type != VAR_INT && *out_type != VAR_BOOL)) {
-                    throw_error("InvalidOperandError", "Invalid operands for operator '/' on line %d", current_executing_line);
-                }
-                if (rhs_val != 0) {
-                    acc /= rhs_val;
-                    *out_type = VAR_INT;
-                } else {
-                    throw_error("DivisionByZeroError", "Division by zero on line %d", current_executing_line);
-                }
             }
             if (rhs_str) { untrack_alloc(rhs_str); free(rhs_str); }
         } else {
@@ -3230,6 +3604,22 @@ static int evaluate_comparison_val(const char **cursor, char **out_str, int *out
 
         acc = cmp_res;
         *out_type = VAR_BOOL;
+    } else if (op.type == TOKEN_IS) {
+        freeToken(&op);
+        Token is_tok = getNextToken(cursor); freeToken(&is_tok);
+        Token pred_tok = getNextToken(cursor);
+        if (pred_tok.type == TOKEN_EVEN) {
+            freeToken(&pred_tok);
+            acc = (acc % 2 == 0);
+            *out_type = VAR_BOOL;
+        } else if (pred_tok.type == TOKEN_ODD) {
+            freeToken(&pred_tok);
+            acc = (acc % 2 != 0);
+            *out_type = VAR_BOOL;
+        } else {
+            freeToken(&pred_tok);
+            throw_error("SyntaxError", "Expected 'even' or 'odd' after 'is' on line %d", current_executing_line);
+        }
     } else {
         freeToken(&op);
     }
@@ -5386,6 +5776,16 @@ void load_library(const char *target, int line_num) {
     throw_error("FileError", "Cannot load library '%s': file not found on line %d", target, line_num);
 }
 
+void init_math_constants(void) {
+    Variable *v;
+    v = set_var("pi"); v->type = VAR_INT; v->int_val = 3;
+    v = set_var("tau"); v->type = VAR_INT; v->int_val = 6;
+    v = set_var("phi"); v->type = VAR_INT; v->int_val = 16180;
+    v = set_var("e"); v->type = VAR_INT; v->int_val = 2;
+    v = set_var("inf"); v->type = VAR_INT; v->int_val = 2147483647;
+    v = set_var("infinity"); v->type = VAR_INT; v->int_val = 2147483647;
+}
+
 int main(int argc, char *argv[]) {
     if (argc < 2) {
         printf("Usage: %s <filename>\n", argv[0]);
@@ -5414,6 +5814,7 @@ int main(int argc, char *argv[]) {
     source_buffer[read_bytes] = '\0';
     fclose(file);
 
+    init_math_constants();
     parse_lines(source_buffer);
 
     if (line_count > 0) {
