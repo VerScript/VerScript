@@ -563,6 +563,7 @@ int is_error_name(const char *name) {
     if (strcmp(name, "IndexOutOfBoundsError") == 0) return 1;
     if (strcmp(name, "EntityError") == 0) return 1;
     if (strcmp(name, "FileError") == 0) return 1;
+    if (strcmp(name, "DomainError") == 0) return 1;
     if (strcmp(name, "AssertError") == 0) return 1;
     return 0;
 }
