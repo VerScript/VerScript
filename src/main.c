@@ -4541,6 +4541,7 @@ void execute_block(int start, int end) {
                 int nlen = cc - name_start;
                 if (nlen > 63) nlen = 63;
                 strncpy(cd->name, name_start, nlen);
+                cd->name[nlen] = '\0';
                 while (isspace((unsigned char)*cc)) cc++;
                 if (*cc == '(') {
                     cc++;
@@ -4551,7 +4552,9 @@ void execute_block(int start, int end) {
                         while (isalnum((unsigned char)*cc) || *cc == '_') cc++;
                         int plen = cc - p_start;
                         if (plen > 63) plen = 63;
-                        strncpy(cd->params[cd->param_count++], p_start, plen);
+                        strncpy(cd->params[cd->param_count], p_start, plen);
+                        cd->params[cd->param_count][plen] = '\0';
+                        cd->param_count++;
                     }
                 }
 
@@ -4613,6 +4616,7 @@ void execute_block(int start, int end) {
                 int nlen = cc - name_start;
                 if (nlen > 63) nlen = 63;
                 strncpy(lib->name, name_start, nlen);
+                lib->name[nlen] = '\0';
 
                 int cur_sec = 0; // 1 = const/static, 2 = dynamic
                 LibraryDef *prev_lib_ctx = current_library;
@@ -4665,6 +4669,7 @@ void execute_block(int start, int end) {
                         int cnlen = clc - cname_start;
                         if (cnlen > 63) cnlen = 63;
                         strncpy(cd->name, cname_start, cnlen);
+                        cd->name[cnlen] = '\0';
                         while (isspace((unsigned char)*clc)) clc++;
                         if (*clc == '(') {
                             clc++;
@@ -4675,7 +4680,9 @@ void execute_block(int start, int end) {
                                 while (isalnum((unsigned char)*clc) || *clc == '_') clc++;
                                 int plen = clc - p_start;
                                 if (plen > 63) plen = 63;
-                                strncpy(cd->params[cd->param_count++], p_start, plen);
+                                strncpy(cd->params[cd->param_count], p_start, plen);
+                                cd->params[cd->param_count][plen] = '\0';
+                                cd->param_count++;
                             }
                         }
 
@@ -4757,7 +4764,10 @@ void execute_block(int start, int end) {
                             lr->kind = (kind_tok.type == TOKEN_FUNC) ? ROUTINE_FUNC : ROUTINE_METHOD;
                             freeToken(&kind_tok);
                             Token rname = getNextToken(&c);
-                            if (rname.type == TOKEN_IDENTIFIER) strncpy(lr->name, rname.value, 63);
+                            if (rname.type == TOKEN_IDENTIFIER) {
+                                strncpy(lr->name, rname.value, 63);
+                                lr->name[63] = '\0';
+                            }
                             freeToken(&rname);
                             while (1) {
                                 Token ptok = getNextToken(&c);
@@ -4770,7 +4780,9 @@ void execute_block(int start, int end) {
                                     continue;
                                 }
                                 if ((ptok.type == TOKEN_IDENTIFIER || ptok.type == TOKEN_ARR) && ptok.value && lr->param_count < 16) {
-                                    strncpy(lr->params[lr->param_count++], ptok.value, 63);
+                                    strncpy(lr->params[lr->param_count], ptok.value, 63);
+                                    lr->params[lr->param_count][63] = '\0';
+                                    lr->param_count++;
                                 }
                                 freeToken(&ptok);
                             }
