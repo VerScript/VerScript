@@ -1,0 +1,60 @@
+! Comprehensive test suite for DataType constraints and Native Pseudo engine
+
+! 1. Primitive and Native Constraint Declarations
+num a : 42
+bool b : true
+str c : "hello"
+arr d : [1, 2, 3]
+
+set int myInt : 100
+set posNum myPos : 5
+set nonNegNum myZero : 0
+set byte myByte : 255
+set port myPort : 8080
+set nonEmptyStr myStr : "VerScript"
+set char myChar : "V"
+set nonEmptyArr myArr : [10]
+
+! 2. Custom DataType Definition
+DataType Age extends num
+  it >= 0
+  it <= 120
+
+Age validAge : 25
+
+DataType EmailAddress extends str
+  it.length() > 5
+  it.contains("@")
+
+EmailAddress validEmail : "dev@verscript.io"
+
+! 3. Function with Type Constraints (Prefix and Postfix)
+def func addNums(num x, y: num)
+  reply x + y
+
+set res : (addNums 10, 20)
+
+! 4. Native Pseudo and Random (both dot notation and direct built-in calling)
+Pseudo.seed 1337
+set r1 : Pseudo.between 10, 50
+set r2 : (between 100, 200)
+set b1 : Pseudo.boolean()
+set u1 : (uuid)
+set n1 : (name)
+set e1 : (email)
+set an1 : (alphaNumeric 12)
+set ch1 : (choice [1, 2, 3, 4, 5])
+set sh1 : (shuffle [1, 2, 3, 4, 5])
+set sm1 : (sample [1, 2, 3, 4, 5], 3)
+
+! 5. Error Catching via unless DataTypeError
+set caughtError : 0
+do
+  validAge : 200
+unless DataTypeError
+  set caughtError : 1
+
+do
+  set byte badByte : 300
+unless DataTypeError
+  set caughtError : caughtError + 1

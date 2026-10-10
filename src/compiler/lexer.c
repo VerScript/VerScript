@@ -208,8 +208,52 @@ Token getNextToken(const char **cursor) {
             token.type = TOKEN_SET;
             return token;
         }
+        if (len == 8 && strncmp(start, "DataType", 8) == 0) {
+            token.type = TOKEN_DATATYPE;
+            token.value = strdup("DataType");
+            track_alloc(token.value);
+            return token;
+        }
+        if (len == 7 && strncmp(start, "extends", 7) == 0) {
+            token.type = TOKEN_EXTENDS;
+            token.value = strdup("extends");
+            track_alloc(token.value);
+            return token;
+        }
+        if (len == 2 && strncmp(start, "it", 2) == 0) {
+            token.type = TOKEN_IT;
+            token.value = strdup("it");
+            track_alloc(token.value);
+            return token;
+        }
+        if (len == 3 && strncmp(start, "num", 3) == 0) {
+            token.type = TOKEN_TYPE_NUM;
+            token.value = strdup("num");
+            track_alloc(token.value);
+            return token;
+        }
+        if (len == 4 && strncmp(start, "bool", 4) == 0) {
+            token.type = TOKEN_TYPE_BOOL;
+            token.value = strdup("bool");
+            track_alloc(token.value);
+            return token;
+        }
+        if (len == 3 && strncmp(start, "str", 3) == 0) {
+            token.type = TOKEN_TYPE_STR;
+            token.value = strdup("str");
+            track_alloc(token.value);
+            return token;
+        }
         if (len == 3 && strncmp(start, "arr", 3) == 0) {
-            token.type = TOKEN_ARR;
+            token.type = TOKEN_TYPE_ARR;
+            token.value = strdup("arr");
+            track_alloc(token.value);
+            return token;
+        }
+        if (len == 6 && strncmp(start, "entity", 6) == 0) {
+            token.type = TOKEN_TYPE_ENTITY;
+            token.value = strdup("entity");
+            track_alloc(token.value);
             return token;
         }
         if (len == 5 && strncmp(start, "class", 5) == 0) {
