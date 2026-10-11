@@ -340,6 +340,7 @@ char* resolve_alias_line(const char *line_text, char *out_buf, size_t out_buf_si
     int pos = 0;
     if (prefix_len > 0 && pos + prefix_len < (int)out_buf_size - 1) {
         strncpy(out_buf + pos, line_text, prefix_len);
+        out_buf[pos + prefix_len] = '\0';
         pos += prefix_len;
     }
 
@@ -382,6 +383,7 @@ char* resolve_alias_line(const char *line_text, char *out_buf, size_t out_buf_si
                 int orig_len = rem - q_start;
                 if (pos + orig_len < (int)out_buf_size - 1) {
                     strncpy(out_buf + pos, q_start, orig_len);
+                    out_buf[pos + orig_len] = '\0';
                     pos += orig_len;
                 }
             }
@@ -667,6 +669,7 @@ char* array_to_string(const Array *arr) {
         } else if (it->type == VAR_ARRAY) {
             char *sub = array_to_string(it->array_val);
             strncpy(item_buf, sub, sizeof(item_buf) - 1);
+            item_buf[sizeof(item_buf) - 1] = '\0';
         } else if (it->type == VAR_ENTITY) {
             snprintf(item_buf, sizeof(item_buf), "<Entity:%s>", it->entity_val ? it->entity_val->class_name : "unknown");
         }
@@ -793,6 +796,7 @@ char* array_join(const Array *arr, const char *sep) {
         else if (it->type == VAR_ARRAY) {
             char *sub = array_to_string(it->array_val);
             strncpy(item_buf, sub, sizeof(item_buf) - 1);
+            item_buf[sizeof(item_buf) - 1] = '\0';
         }
         int item_len = strlen(item_buf);
         if (cur_len + item_len + sep_len + 2 >= cap) {
@@ -2247,6 +2251,7 @@ Entity* instantiate_entity(ClassDef *cd, const char **cursor, int line_num) {
     if (!ent) throw_error("MemoryAllocationError", "Memory allocation failed for entity");
     track_alloc((char*)ent);
     strncpy(ent->class_name, cd->name, sizeof(ent->class_name) - 1);
+    ent->class_name[sizeof(ent->class_name) - 1] = '\0';
 
     typedef struct {
         int int_val;
@@ -2440,6 +2445,7 @@ Entity* instantiate_entity(ClassDef *cd, const char **cursor, int line_num) {
                 Token mname = getNextToken(&c);
                 if (mname.type == TOKEN_IDENTIFIER) {
                     strncpy(mr->name, mname.value, sizeof(mr->name) - 1);
+                    mr->name[sizeof(mr->name) - 1] = '\0';
                 }
                 freeToken(&mname);
 
@@ -3302,6 +3308,7 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
         if (rp.type != TOKEN_RPAREN) {
             char tokval[64] = "";
             if (rp.value) strncpy(tokval, rp.value, 63);
+            tokval[63] = '\0';
             int toktype = rp.type;
             freeToken(&rp);
             throw_error("SyntaxError", "Expected ')' on line %d, got token type %d ('%s')", current_executing_line, toktype, tokval);
@@ -3384,10 +3391,13 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
             char partition_name[32] = "";
             if (part.type == TOKEN_STATIC || (part.type == TOKEN_IDENTIFIER && strcmp(part.value, "static") == 0)) {
                 strncpy(partition_name, "static", 31);
+                partition_name[31] = '\0';
             } else if (part.type == TOKEN_DYNAMIC || (part.type == TOKEN_IDENTIFIER && strcmp(part.value, "dynamic") == 0)) {
                 strncpy(partition_name, "dynamic", 31);
+                partition_name[31] = '\0';
             } else if (part.type == TOKEN_IDENTIFIER && strcmp(part.value, "thisstatic") == 0) {
                 strncpy(partition_name, "thisstatic", 31);
+                partition_name[31] = '\0';
             } else {
                 freeToken(&part); freeToken(&t);
                 throw_error("SyntaxError", "Expected metadata partition (static, dynamic, thisstatic) after 'meta.' on line %d", current_executing_line);
@@ -4841,10 +4851,13 @@ void execute_line(const char *text, int line_num) {
                     char partition_name[32] = "";
                     if (part.type == TOKEN_STATIC || (part.type == TOKEN_IDENTIFIER && strcmp(part.value, "static") == 0)) {
                         strncpy(partition_name, "static", 31);
+                        partition_name[31] = '\0';
                     } else if (part.type == TOKEN_DYNAMIC || (part.type == TOKEN_IDENTIFIER && strcmp(part.value, "dynamic") == 0)) {
                         strncpy(partition_name, "dynamic", 31);
+                        partition_name[31] = '\0';
                     } else if (part.type == TOKEN_IDENTIFIER && strcmp(part.value, "thisstatic") == 0) {
                         strncpy(partition_name, "thisstatic", 31);
+                        partition_name[31] = '\0';
                     } else {
                         freeToken(&part); freeToken(&t);
                         throw_error("SyntaxError", "Expected metadata partition after 'meta.' on line %d", line_num);
@@ -6413,6 +6426,7 @@ int is_library_loaded(const char *name) {
 void mark_library_loaded(const char *name) {
     if (loaded_library_count < 64) {
         strncpy(loaded_libraries[loaded_library_count++], name, 127);
+        loaded_libraries[loaded_library_count - 1][127] = '\0';
     }
 }
 
