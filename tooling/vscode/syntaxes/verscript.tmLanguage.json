@@ -1,0 +1,278 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "VerScript",
+  "scopeName": "source.verscript",
+  "fileTypes": [
+    "vrs",
+    "lib.vrs"
+  ],
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#attributes"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#booleans"
+    },
+    {
+      "include": "#keywords-declaration"
+    },
+    {
+      "include": "#keywords-control"
+    },
+    {
+      "include": "#keywords-concurrency"
+    },
+    {
+      "include": "#types"
+    },
+    {
+      "include": "#built-in-errors"
+    },
+    {
+      "include": "#stdlib-modules"
+    },
+    {
+      "include": "#native-math-and-pseudo"
+    },
+    {
+      "include": "#operators"
+    },
+    {
+      "include": "#function-calls"
+    },
+    {
+      "include": "#identifiers"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.block.verscript",
+          "begin": "!!",
+          "end": "!!"
+        },
+        {
+          "name": "comment.line.exclamation.verscript",
+          "match": "!(?!=).*$"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.verscript",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.verscript",
+              "match": "\\\\."
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.single.verscript",
+          "begin": "'",
+          "end": "'",
+          "patterns": [
+            {
+              "name": "constant.character.escape.verscript",
+              "match": "\\\\."
+            }
+          ]
+        }
+      ]
+    },
+    "attributes": {
+      "patterns": [
+        {
+          "match": "(\\?)([a-zA-Z_][a-zA-Z0-9_]*)(?:(=)(\"[^\"]*\"|'[^']*'|#[0-9a-fA-F]{3,8}|[a-zA-Z0-9_.-]+))?",
+          "captures": {
+            "1": {
+              "name": "punctuation.definition.annotation.verscript"
+            },
+            "2": {
+              "name": "entity.other.attribute-name.verscript"
+            },
+            "3": {
+              "name": "punctuation.separator.key-value.verscript"
+            },
+            "4": {
+              "name": "string.unquoted.attribute-value.verscript"
+            }
+          }
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.hex.verscript",
+          "match": "\\b0x[0-9a-fA-F]+\\b"
+        },
+        {
+          "name": "constant.numeric.float.verscript",
+          "match": "\\b\\d+\\.\\d+\\b"
+        },
+        {
+          "name": "constant.numeric.integer.verscript",
+          "match": "\\b\\d+\\b"
+        }
+      ]
+    },
+    "booleans": {
+      "patterns": [
+        {
+          "name": "constant.language.boolean.verscript",
+          "match": "\\b(true|false|null|nil)\\b"
+        }
+      ]
+    },
+    "keywords-declaration": {
+      "patterns": [
+        {
+          "name": "keyword.declaration.verscript",
+          "match": "\\b(def|func|method|class|lib|DataType|alias)\\b"
+        },
+        {
+          "name": "storage.modifier.section.verscript",
+          "match": "\\b(static|dynamic|meta|thisstatic|const)\\b"
+        },
+        {
+          "name": "storage.modifier.visibility.verscript",
+          "match": "\\b(public|private)\\b"
+        },
+        {
+          "name": "storage.modifier.lifecycle.verscript",
+          "match": "\\b(inbound|outbound|outscope|temp|inst)\\b"
+        },
+        {
+          "name": "keyword.control.directive.verscript",
+          "match": "\\b(import|inject|del)\\b"
+        }
+      ]
+    },
+    "keywords-control": {
+      "patterns": [
+        {
+          "name": "keyword.control.conditional.verscript",
+          "match": "\\b(if|then|else|guard|match|with)\\b"
+        },
+        {
+          "name": "keyword.control.repeat.verscript",
+          "match": "\\b(loop|repeat|while|until|cycle|for|by|step)\\b"
+        },
+        {
+          "name": "keyword.control.watch.verscript",
+          "match": "\\b(do|unless|internal|external)\\b"
+        },
+        {
+          "name": "keyword.control.flow.verscript",
+          "match": "\\b(reply|throw)\\b"
+        }
+      ]
+    },
+    "keywords-concurrency": {
+      "patterns": [
+        {
+          "name": "keyword.control.concurrency.verscript",
+          "match": "\\b(display|prompt|emit|on|when|async|sync|send|recv|channel)\\b"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "support.type.primitive.verscript",
+          "match": "\\b(num|bool|str|arr|entity)\\b"
+        }
+      ]
+    },
+    "built-in-errors": {
+      "patterns": [
+        {
+          "name": "support.type.exception.verscript",
+          "match": "\\b(MemoryAllocationError|UndefinedVariableError|InvalidOperandError|DivisionByZeroError|IndentationError|LoopIterationError|LoopLimitError|LoopDirectionError|LoopStepError|ScopeViolationError|SyntaxError|RuntimeError|InvalidErrorNameError|SystemError|VisibilityError|ImmutableError|IndexOutOfBoundsError|EntityError|FileError|DomainError|AssertError|DataTypeError|UnassignedVariableError|AsyncError|ChannelError|MatchError)\\b"
+        }
+      ]
+    },
+    "stdlib-modules": {
+      "patterns": [
+        {
+          "name": "support.class.library.verscript",
+          "match": "\\b(Arrays|Assert|Benchmark|Color|Console|Crypto|Env|Fs|Http|Json|Log|Math|Matrix|Mock|Path|Regex|Stats|Strings|Time|Validate)\\b"
+        }
+      ]
+    },
+    "native-math-and-pseudo": {
+      "patterns": [
+        {
+          "name": "support.function.math.verscript",
+          "match": "\\b(sqrt|rt|min|max|clamp|from|to|sign|sgn|divRem|isEven|isOdd|gcd|hcf|lcm|floor|ceil|round|sin|cos|tan|hypot|degToRad|radToDeg|sinDeg|cosDeg|ln|log|log2|exp|lerp)\\b"
+        },
+        {
+          "name": "support.function.pseudo.verscript",
+          "match": "\\b(between|choice|shuffle|sample|uuid|name|email|alphaNumeric|sum|mean|minMax|range)\\b"
+        },
+        {
+          "name": "support.function.method.verscript",
+          "match": "\\b(length|len|isEmpty|indexOf|contains|startsWith|endsWith|slice|reverse|join|trim|toUpper|toLower|split|repeat|padLeft|padRight|push|pop|shift|unshift|count)\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.pipeline.verscript",
+          "match": "\\|>"
+        },
+        {
+          "name": "keyword.operator.arithmetic.verscript",
+          "match": "(\\/\\/|\\^|\\+|\\-|\\*|\\/|%|\\|)"
+        },
+        {
+          "name": "keyword.operator.comparison.verscript",
+          "match": "(!=|x=|<=|>=|<|>|=)"
+        },
+        {
+          "name": "keyword.operator.logical.verscript",
+          "match": "(&|\\b(and|or|nor|xor|xnor|xand|x&|not)\\b)"
+        },
+        {
+          "name": "keyword.operator.assignment.verscript",
+          "match": "(?<!\\?):"
+        }
+      ]
+    },
+    "function-calls": {
+      "patterns": [
+        {
+          "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*(?=\\()",
+          "captures": {
+            "1": {
+              "name": "entity.name.function.verscript"
+            }
+          }
+        }
+      ]
+    },
+    "identifiers": {
+      "patterns": [
+        {
+          "name": "variable.other.verscript",
+          "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*\\b"
+        }
+      ]
+    }
+  }
+}

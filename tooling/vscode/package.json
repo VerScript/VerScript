@@ -1,0 +1,74 @@
+{
+  "name": "verscript-lang",
+  "displayName": "VerScript Language Support",
+  "description": "Official language tooling, syntax highlighting, debugger, and primitives for VerScript",
+  "version": "0.1.0",
+  "publisher": "VerScript",
+  "icon": "icon.png",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Snippets",
+    "Debuggers"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "verscript",
+        "aliases": [
+          "VerScript",
+          "verscript",
+          "vrs"
+        ],
+        "extensions": [
+          ".vrs",
+          ".lib.vrs"
+        ],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icon.png",
+          "dark": "./icon.png"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "verscript",
+        "scopeName": "source.verscript",
+        "path": "./syntaxes/verscript.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "verscript",
+        "path": "./snippets/verscript.json"
+      }
+    ],
+    "debuggers": [
+      {
+        "type": "verscript",
+        "label": "VerScript Native Debugger",
+        "program": "./debugger/dap_server.js",
+        "runtime": "node",
+        "languages": [
+          "verscript"
+        ],
+        "configurationSnippets": [
+          {
+            "label": "VerScript: Launch Script",
+            "description": "Launch a VerScript program in native debug mode",
+            "initialConfigurations": {
+              "type": "verscript",
+              "request": "launch",
+              "name": "Launch VerScript Program",
+              "program": "${file}"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

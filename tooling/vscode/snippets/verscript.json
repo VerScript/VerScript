@@ -1,0 +1,75 @@
+{
+  "Function Definition": {
+    "prefix": "func",
+    "body": [
+      "def func ${1:name} ${2:param}",
+      "    ${0:reply 0}"
+    ],
+    "description": "Define a pure VerScript function"
+  },
+  "Method Definition": {
+    "prefix": "method",
+    "body": [
+      "def outbound method ${1:name}(${2:param})",
+      "    ${0}"
+    ],
+    "description": "Define an outbound entity method"
+  },
+  "Class Definition": {
+    "prefix": "class",
+    "body": [
+      "class ${1:ClassName}(${2:params})",
+      "    static:",
+      "        public ${3:property}: ${4:value}",
+      "    dynamic:",
+      "        set ${5:field}: ${6:init}",
+      "        def outbound method ${7:action}()",
+      "            ${0}"
+    ],
+    "description": "Define an object-oriented class"
+  },
+  "Do-Unless Watchdog": {
+    "prefix": "dounless",
+    "body": [
+      "do",
+      "    ${1:! Code to execute}",
+      "unless internal ${2:condition}",
+      "    ${0:display \"Watchdog alert\" ?color=\"yellow\"}"
+    ],
+    "description": "Reactive try-unless watchdog block"
+  },
+  "Guard Clause": {
+    "prefix": "guard",
+    "body": [
+      "guard ${1:condition} else reply ${2:fallback}"
+    ],
+    "description": "Guard clause pre-condition check"
+  },
+  "Pattern Match": {
+    "prefix": "match",
+    "body": [
+      "match ${1:target}",
+      "    with ${2:case1}:",
+      "        ${3:display \"case 1\"}",
+      "    with _:",
+      "        ${0:display \"fallback\"}"
+    ],
+    "description": "Structural pattern matching"
+  },
+  "FIFO Channel": {
+    "prefix": "channel",
+    "body": [
+      "channel ${1:my_queue}",
+      "send ${1:my_queue}, ${2:payload}",
+      "set ${3:item}: recv ${1:my_queue}"
+    ],
+    "description": "High-throughput FIFO Concurrency Channel"
+  },
+  "Display Command": {
+    "prefix": "display",
+    "body": [
+      "display \"${1:Hello World}\" ?color=\"${2|cyan,green,yellow,red,purple,blue|}\""
+    ],
+    "description": "Display message with attribute formatting"
+  }
+}

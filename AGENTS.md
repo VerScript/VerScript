@@ -1,21 +1,21 @@
-# AGENTS.md — VerScript C Interpreter
+# AGENTS.md — VerScript Compiler, Runtime & Developer Ecosystem
 
-Instructions and context for autonomous AI coding agents (such as Google Jules).
+Instructions and context for autonomous AI coding agents (such as Google Antigravity & Jules).
 
 ## 🚀 Dev Environment & Commands
-- **Compiler**: Uses GCC compiler.
-- **Build Interpreter**: Run `make` (produces `verscript` executable or `verscript.exe` on Windows).
-- **Clean Object Files**: Run `make clean`.
+- **Compiler**: Uses GCC C99 compiler.
+- **Build Interpreter**: Run `gcc -O2 -Iinclude src/main.c src/compiler/lexer.c -o verscript.exe` (or `make`).
+- **Run Tests**: Execute `Get-ChildItem tests\*.vrs | ForEach-Object { .\verscript.exe $_.FullName }` to validate the full 53-suite test matrix.
+- **Run Sync Toolchain**: Execute `node tooling/scripts/sync_meta.js` to propagate new keywords, tokens, error names, and libraries to TextMate grammar, language config, snippets, and Antigravity extensions.
+- **Run Official Installer**: Run `powershell -ExecutionPolicy Bypass -File install.ps1` to install `verscript.exe` to User PATH, register Windows file associations (`.vrs`, `.lib.vrs`) with logo icons, and install the Antigravity IDE extension.
 
-## 🏗️ Language Grammar & Rules
-VerScript is a custom, lightweight, C-based scripting language. Its key specifications are:
-- **Variable Assignment**: Spaced colon syntax: `variable_name : expression` (e.g. `x : 42` or `name : "World"`).
-- **Output Statements**: `display "message"` or `display variable`.
-- **Input Statements**: `prompt variable` (stores keyboard input to variables).
-- **Comments**: Any text on a line following `!` is ignored.
-- **Arithmetic**: Supports simple operations (+, -, *, /).
+## 🏗️ Language Architecture
+- **Lexer**: `src/compiler/lexer.c` tokenizes source code, strips comments (`!`, `!!`), computes indentation depth, and processes command attributes (`?key=val`).
+- **VM Engine**: `src/main.c` manages symbol tables, call stacks, expressions, do-unless watchdogs, classes, reactive events, and FIFO channels.
+- **Standard Library**: `stdlib/*.lib.vrs` (20 auto-loaded enterprise libraries: `Strings`, `Math`, `Arrays`, `Json`, etc.).
+- **Developer Tooling**: `tooling/` contains TextMate grammar, VS Code / Antigravity IDE extension, DAP debugger, LSP server, and native Windows installer.
 
 ## 🛡️ Coding Guidelines & Rules
-- **Lexer & Tokens**: Tokenizer logic lives in `src/compiler/lexer.c`. If an invalid character is encountered, return `TOKEN_ERROR` with a 2-byte allocated `value` containing that single character.
-- **Memory Management**: Free any dynamically allocated identifiers/string memory correctly. Avoid memory leaks inside the token loop or expression evaluation.
-- **Rebuilds**: Always clean previous compilation artifacts (`make clean`) before rebuilding to ensure changes in headers (`include/lexer.h`) propagate correctly across all object files.
+- **Memory Management**: Track dynamic allocations with `track_alloc` and `untrack_alloc`. Free string/entity memory cleanly.
+- **Purity Contracts**: Inbound functions cannot mutate outer scope without `outscope`.
+- **Ecosystem Sync**: When adding keywords, update `include/lexer.h`, `src/compiler/lexer.c`, and run `node tooling/scripts/sync_meta.js`.
