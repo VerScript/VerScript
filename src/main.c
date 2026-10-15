@@ -1131,6 +1131,7 @@ Variable* get_var(const char *name) {
                 var_capacity = new_capacity;
             }
             v = &symtable[var_count++];
+            memset(v, 0, sizeof(Variable));
             v->name = strdup("error");
             v->type = VAR_STRING;
             v->int_val = 0;
@@ -1244,6 +1245,7 @@ Variable* set_var_scoped(const char *name, int line_num) {
             var_capacity = new_capacity;
         }
         Variable *v = &symtable[var_count++];
+        memset(v, 0, sizeof(Variable));
         v->name = strdup(name);
         v->type = VAR_INT;
         v->int_val = 0;
@@ -1289,6 +1291,7 @@ Variable* set_var_scoped(const char *name, int line_num) {
     }
 
     Variable *v = &symtable[var_count++];
+    memset(v, 0, sizeof(Variable));
     v->name = strdup(name);
     v->type = VAR_INT;
     v->int_val = 0;
