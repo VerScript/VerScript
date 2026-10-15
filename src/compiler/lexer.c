@@ -440,14 +440,28 @@ Token getNextToken(const char **cursor) {
     // Strings
     if (**cursor == '"') {
         (*cursor)++;
-        const char *start = *cursor;
-        while (**cursor != '"' && **cursor != '\0') (*cursor)++;
-        size_t len = *cursor - start;
-        token.value = malloc(len + 1);
+        char buf[8192];
+        int bi = 0;
+        while (**cursor != '"' && **cursor != '\0') {
+            if (**cursor == '\\' && *(*cursor + 1) != '\0') {
+                (*cursor)++;
+                if (**cursor == 'n') buf[bi++] = '\n';
+                else if (**cursor == 't') buf[bi++] = '\t';
+                else if (**cursor == 'r') buf[bi++] = '\r';
+                else if (**cursor == '"') buf[bi++] = '"';
+                else if (**cursor == '\\') buf[bi++] = '\\';
+                else buf[bi++] = **cursor;
+                (*cursor)++;
+            } else {
+                buf[bi++] = **cursor;
+                (*cursor)++;
+            }
+        }
+        buf[bi] = '\0';
+        token.value = malloc(bi + 1);
         if (!token.value) { printf("ERROR: MemoryAllocationError\n"); exit(1); }
         track_alloc(token.value);
-        strncpy(token.value, start, len);
-        token.value[len] = '\0';
+        memcpy(token.value, buf, bi + 1);
         token.type = TOKEN_STRING;
         if (**cursor == '"') (*cursor)++;
         return token;

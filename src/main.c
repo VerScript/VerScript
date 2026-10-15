@@ -1065,6 +1065,46 @@ Array* string_split(const char *str, const char *sep) {
     return arr;
 }
 
+char* string_replace(const char *str, const char *target, const char *repl) {
+    if (!str) { char *r = strdup(""); track_alloc(r); return r; }
+    if (!target || target[0] == '\0') { char *r = strdup(str); track_alloc(r); return r; }
+    if (!repl) repl = "";
+    int target_len = strlen(target);
+    int repl_len = strlen(repl);
+    int cap = strlen(str) * 2 + 64;
+    char *buf = malloc(cap);
+    if (!buf) { printf("ERROR: MemoryAllocationError\n"); exit(1); }
+    track_alloc(buf);
+    buf[0] = '\0';
+    int buf_len = 0;
+    const char *p = str;
+    while (*p) {
+        if (strncmp(p, target, target_len) == 0) {
+            if (buf_len + repl_len + 1 >= cap) {
+                cap = (buf_len + repl_len + 1) * 2;
+                untrack_alloc(buf);
+                buf = realloc(buf, cap);
+                if (!buf) { printf("ERROR: MemoryAllocationError\n"); exit(1); }
+                track_alloc(buf);
+            }
+            strcat(buf, repl);
+            buf_len += repl_len;
+            p += target_len;
+        } else {
+            if (buf_len + 2 >= cap) {
+                cap = (buf_len + 2) * 2;
+                untrack_alloc(buf);
+                buf = realloc(buf, cap);
+                if (!buf) { printf("ERROR: MemoryAllocationError\n"); exit(1); }
+                track_alloc(buf);
+            }
+            buf[buf_len++] = *p++;
+            buf[buf_len] = '\0';
+        }
+    }
+    return buf;
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // EMBEDDED STANDARD RELEASE CORE LIBRARIES (20 NATIVE ENGINE MODULES)
 // ═══════════════════════════════════════════════════════════════════
@@ -2705,6 +2745,11 @@ int is_native_func_name(const char *name) {
     if (strcmp(name, "repeat") == 0) return 1;
     if (strcmp(name, "padLeft") == 0) return 1;
     if (strcmp(name, "padRight") == 0) return 1;
+    if (strcmp(name, "startsWith") == 0) return 1;
+    if (strcmp(name, "endsWith") == 0) return 1;
+    if (strcmp(name, "replace") == 0) return 1;
+    if (strcmp(name, "charCodeAt") == 0) return 1;
+    if (strcmp(name, "sort") == 0) return 1;
     return 0;
 }
 
@@ -2825,6 +2870,30 @@ int dispatch_array_method(Array *arr, const char *method, const char **cursor, c
     }
     if (strcmp(method, "reverse") == 0) {
         array_reverse(arr);
+        *out_type = VAR_ARRAY;
+        if (out_arr) *out_arr = arr;
+        current_reply.array_val = arr;
+        *out_str = array_to_string(arr);
+        return 0;
+    }
+    if (strcmp(method, "sort") == 0) {
+        if (arr && arr->count > 1) {
+            for (int i = 0; i < arr->count - 1; i++) {
+                for (int j = 0; j < arr->count - i - 1; j++) {
+                    int swap_needed = 0;
+                    if (arr->items[j].type == VAR_INT && arr->items[j+1].type == VAR_INT) {
+                        if (arr->items[j].int_val > arr->items[j+1].int_val) swap_needed = 1;
+                    } else if (arr->items[j].string_val && arr->items[j+1].string_val) {
+                        if (strcmp(arr->items[j].string_val, arr->items[j+1].string_val) > 0) swap_needed = 1;
+                    }
+                    if (swap_needed) {
+                        Variable tmp = arr->items[j];
+                        arr->items[j] = arr->items[j+1];
+                        arr->items[j+1] = tmp;
+                    }
+                }
+            }
+        }
         *out_type = VAR_ARRAY;
         if (out_arr) *out_arr = arr;
         current_reply.array_val = arr;
@@ -2997,6 +3066,37 @@ int dispatch_string_method(const char *str, const char *method, const char **cur
         if (out_arr) *out_arr = res;
         current_reply.array_val = res;
         *out_str = array_to_string(res);
+        return 0;
+    }
+    if (strcmp(method, "startsWith") == 0) {
+        *out_type = VAR_BOOL;
+        const char *pref = (arg_count > 0 && args[0].string_val) ? args[0].string_val : "";
+        if (!str || !pref) return 0;
+        size_t plen = strlen(pref);
+        if (strlen(str) < plen) return 0;
+        return strncmp(str, pref, plen) == 0 ? 1 : 0;
+    }
+    if (strcmp(method, "endsWith") == 0) {
+        *out_type = VAR_BOOL;
+        const char *suf = (arg_count > 0 && args[0].string_val) ? args[0].string_val : "";
+        if (!str || !suf) return 0;
+        size_t slen = strlen(str);
+        size_t suflen = strlen(suf);
+        if (slen < suflen) return 0;
+        return strcmp(str + slen - suflen, suf) == 0 ? 1 : 0;
+    }
+    if (strcmp(method, "charCodeAt") == 0) {
+        *out_type = VAR_INT;
+        int idx = (arg_count > 0) ? args[0].int_val : 0;
+        if (!str || idx < 0 || idx >= (int)strlen(str)) return 0;
+        return (int)(unsigned char)str[idx];
+    }
+    if (strcmp(method, "replace") == 0) {
+        const char *target = (arg_count > 0 && args[0].string_val) ? args[0].string_val : "";
+        const char *repl = (arg_count > 1 && args[1].string_val) ? args[1].string_val : "";
+        char *res = string_replace(str, target, repl);
+        *out_type = VAR_STRING;
+        *out_str = res;
         return 0;
     }
 
