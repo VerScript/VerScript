@@ -1,0 +1,6 @@
+def func test_guard n
+  guard n > 0 else reply -1
+  reply n * 2
+
+display test_guard(5)
+display test_guard(-3)

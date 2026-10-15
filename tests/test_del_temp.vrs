@@ -1,0 +1,3 @@
+temp arr val: [1,23,3]
+del val
+display val

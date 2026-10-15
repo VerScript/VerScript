@@ -1,0 +1,14 @@
+num val: 2
+match val
+  with 1:
+    display "one"
+  with 2:
+    display "two"
+  else:
+    display "other"
+
+match 99
+  with 1:
+    display "one"
+  else:
+    display "fallback"

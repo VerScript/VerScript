@@ -1,0 +1,7 @@
+def func double x
+  reply x * 2
+
+def func add_three x
+  reply x + 3
+
+display 5 |> double |> add_three

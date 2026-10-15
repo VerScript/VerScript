@@ -1,0 +1,5 @@
+on start
+inst x: 42
+display x
+
+display "Finished stack"

@@ -1,0 +1,7 @@
+async func compute_val
+  reply 100
+
+on complete
+  display "Completed async task"
+
+display sync compute_val()

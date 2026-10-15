@@ -1,0 +1,6 @@
+on start
+temp arr val: [1,23,3]
+del val
+inst var: 100
+
+display var

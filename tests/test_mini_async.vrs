@@ -1,0 +1,4 @@
+async func compute_val
+  reply 100
+
+display compute_val()

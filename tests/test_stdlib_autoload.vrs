@@ -1,0 +1,4 @@
+display Strings.toUpper("verscript rocks")
+display Arrays.len([10, 20, 30, 40])
+Assert.isTrue(1, "should be true")
+Log.info("Auto-loaded standard libraries working!")

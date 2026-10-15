@@ -1,0 +1,7 @@
+chan q
+send q 10
+send q 20
+send q 30
+display recv q
+display recv q
+display recv q
