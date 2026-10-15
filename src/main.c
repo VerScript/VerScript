@@ -127,6 +127,12 @@ LibraryDef* find_library(const char *name) {
         if (strcmp(libraries[i].name, name) == 0) return &libraries[i];
     }
     if (!is_library_loaded(name)) {
+        if (get_embedded_core_lib(name)) {
+            load_library(name, current_executing_line);
+            for (int i = 0; i < library_count; i++) {
+                if (strcmp(libraries[i].name, name) == 0) return &libraries[i];
+            }
+        }
         char candidates[16][1024];
         int cand_count = 0;
         snprintf(candidates[cand_count++], sizeof(candidates[0]), "%s", name);
@@ -145,7 +151,7 @@ LibraryDef* find_library(const char *name) {
             f = fopen(candidates[i], "rb");
             if (f) { fclose(f); break; }
         }
-        if (f || get_embedded_core_lib(name)) {
+        if (f) {
             load_library(name, current_executing_line);
             for (int i = 0; i < library_count; i++) {
                 if (strcmp(libraries[i].name, name) == 0) return &libraries[i];
@@ -1060,70 +1066,10 @@ Array* string_split(const char *str, const char *sep) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// EMBEDDED STANDARD RELEASE CORE LIBRARIES
+// EMBEDDED STANDARD RELEASE CORE LIBRARIES (20 NATIVE ENGINE MODULES)
 // ═══════════════════════════════════════════════════════════════════
+#include "embedded_core_libs.h"
 
-static const char *CORE_LIB_STATS =
-    "lib Stats\n"
-    "  meta:\n"
-    "    static:\n"
-    "      category: \"Statistics\"\n"
-    "      version: \"1.0.0\"\n"
-    "  dynamic:\n"
-    "    def func sum values\n"
-    "      if values.length() = 0 then\n"
-    "        reply 0\n"
-    "      set total: 0\n"
-    "      iterate i from 0 to values.length() - 1\n"
-    "        set total: total + values[i]\n"
-    "      reply total\n"
-    "    def func mean values\n"
-    "      if values.length() = 0 then\n"
-    "        reply 0\n"
-    "      set s: (sum values)\n"
-    "      reply s / values.length()\n"
-    "    def func minMax values\n"
-    "      if values.length() = 0 then\n"
-    "        reply [0, 0]\n"
-    "      set curMin: values[0]\n"
-    "      set curMax: values[0]\n"
-    "      if values.length() > 1 then\n"
-    "        iterate i from 1 to values.length() - 1\n"
-    "          set x: values[i]\n"
-    "          if x < curMin then\n"
-    "            set curMin: x\n"
-    "          if x > curMax then\n"
-    "            set curMax: x\n"
-    "      reply [curMin, curMax]\n"
-    "    def func range values\n"
-    "      set mm: (minMax values)\n"
-    "      reply mm[1] - mm[0]\n";
-
-static const char *CORE_LIB_ASSERT =
-    "lib Assert\n"
-    "  meta:\n"
-    "    static:\n"
-    "      category: \"Testing & Verification\"\n"
-    "      version: \"1.0.0\"\n"
-    "  dynamic:\n"
-    "    def method equal actual expected message\n"
-    "      if actual != expected then\n"
-    "        throw \"AssertionError: \" + message\n"
-    "    def method notEqual actual expected message\n"
-    "      if actual = expected then\n"
-    "        throw \"AssertionError: \" + message\n"
-    "    def method isTrue condition message\n"
-    "      if not condition then\n"
-    "        throw \"AssertionError: \" + message\n"
-    "    def method isFalse condition message\n"
-    "      if condition then\n"
-    "        throw \"AssertionError: \" + message\n";
-
-const char* get_embedded_core_lib(const char *name) {
-    if (strcmp(name, "Stats") == 0) return CORE_LIB_STATS;
-    if (strcmp(name, "Assert") == 0) return CORE_LIB_ASSERT;
-    return NULL;
-}
 
 #define MAX_ROUTINES 128
 Routine routines[MAX_ROUTINES];
@@ -2203,7 +2149,7 @@ int evaluate_argument(const char **cursor, char **out_str, int *out_type, int *o
         return 1;
     }
     freeToken(&peek);
-    *out_int = evaluate_operand_val(cursor, out_str, out_type, out_arr, out_ent);
+    *out_int = evaluate_expression_val(cursor, out_str, out_type, out_arr, out_ent);
     return 1;
 }
 
@@ -3086,6 +3032,25 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
         *out_str = NULL;
         *out_type = VAR_BOOL;
         return !truth;
+    }
+
+    if (t.type == TOKEN_TYPEOF) {
+        freeToken(&t);
+        char *sub_str = NULL;
+        int sub_type = VAR_INT;
+        Array *sub_arr = NULL;
+        Entity *sub_ent = NULL;
+        evaluate_operand_val(cursor, &sub_str, &sub_type, &sub_arr, &sub_ent);
+        if (sub_str) { untrack_alloc(sub_str); free(sub_str); }
+        *out_type = VAR_STRING;
+        const char *tname = "num";
+        if (sub_type == VAR_STRING) tname = "str";
+        else if (sub_type == VAR_BOOL) tname = "bool";
+        else if (sub_type == VAR_ARRAY) tname = "arr";
+        else if (sub_type == VAR_ENTITY) tname = "entity";
+        *out_str = strdup(tname);
+        track_alloc(*out_str);
+        return 0;
     }
 
     if (t.type == TOKEN_SYNC) {
@@ -7408,6 +7373,11 @@ void load_library(const char *target, int line_num) {
     }
 
     const char *embedded = get_embedded_core_lib(target);
+    if (embedded) {
+        load_library_source(embedded, target, line_num);
+        mark_library_loaded(target);
+        return;
+    }
 
     char candidates[16][1024];
     int cand_count = 0;
@@ -7446,12 +7416,6 @@ void load_library(const char *target, int line_num) {
 
         load_library_source(buf, target, line_num);
         free(buf);
-        mark_library_loaded(target);
-        return;
-    }
-
-    if (embedded) {
-        load_library_source(embedded, target, line_num);
         mark_library_loaded(target);
         return;
     }
