@@ -108,6 +108,7 @@ int library_count = 0;
 Entity *current_entity = NULL;
 LibraryDef *current_library = NULL;
 
+extern char exec_dir[512];
 int is_library_loaded(const char *name);
 void load_library(const char *target, int line_num);
 const char* get_embedded_core_lib(const char *name);
@@ -126,12 +127,17 @@ LibraryDef* find_library(const char *name) {
         if (strcmp(libraries[i].name, name) == 0) return &libraries[i];
     }
     if (!is_library_loaded(name)) {
-        char candidates[8][256];
+        char candidates[16][1024];
         int cand_count = 0;
         snprintf(candidates[cand_count++], sizeof(candidates[0]), "%s", name);
         snprintf(candidates[cand_count++], sizeof(candidates[0]), "%s.lib.vrs", name);
         snprintf(candidates[cand_count++], sizeof(candidates[0]), "stdlib/%s.lib.vrs", name);
         snprintf(candidates[cand_count++], sizeof(candidates[0]), "../stdlib/%s.lib.vrs", name);
+        if (exec_dir[0] != '\0') {
+            snprintf(candidates[cand_count++], sizeof(candidates[0]), "%s/stdlib/%s.lib.vrs", exec_dir, name);
+            snprintf(candidates[cand_count++], sizeof(candidates[0]), "%s/../stdlib/%s.lib.vrs", exec_dir, name);
+            snprintf(candidates[cand_count++], sizeof(candidates[0]), "%s/../../stdlib/%s.lib.vrs", exec_dir, name);
+        }
         snprintf(candidates[cand_count++], sizeof(candidates[0]), "core_libs/%s.lib.vrs", name);
         snprintf(candidates[cand_count++], sizeof(candidates[0]), "%s.vrs", name);
         FILE *f = NULL;
@@ -1470,6 +1476,8 @@ Variable* set_var_scoped(const char *name, int line_num) {
             Routine *cur_routine = (call_stack_ptr > 0) ? call_stack[call_stack_ptr - 1].routine : NULL;
             if (cur_routine && cur_routine->bound_library != NULL) {
                 existing = NULL;
+            } else if (existing->scope_level > 0) {
+                existing = NULL;
             } else {
                 PurityKind cur_purity = cur_routine ? cur_routine->purity : PURITY_OUTBOUND;
                 const char *rname = cur_routine ? cur_routine->name : "routine";
@@ -2538,6 +2546,35 @@ Entity* instantiate_entity(ClassDef *cd, const char **cursor, int line_num) {
         }
         param_var->array_val = evaluated_args[p].arr_val;
         param_var->entity_val = evaluated_args[p].ent_val;
+
+        // Persist constructor parameters into entity dynamic variables
+        if (ent->dynamic_count >= ent->dynamic_capacity) {
+            int new_cap = (ent->dynamic_capacity == 0) ? 8 : ent->dynamic_capacity * 2;
+            if (ent->dynamic_vars) untrack_alloc((char*)ent->dynamic_vars);
+            Variable *tmp = realloc(ent->dynamic_vars, new_cap * sizeof(Variable));
+            if (!tmp) throw_error("MemoryAllocationError", "Memory allocation failed");
+            ent->dynamic_vars = tmp;
+            track_alloc((char*)ent->dynamic_vars);
+            ent->dynamic_capacity = new_cap;
+        }
+        Variable *edv = &ent->dynamic_vars[ent->dynamic_count++];
+        memset(edv, 0, sizeof(Variable));
+        edv->name = strdup(cd->params[p]);
+        track_alloc(edv->name);
+        edv->type = evaluated_args[p].type;
+        edv->int_val = evaluated_args[p].int_val;
+        if (evaluated_args[p].str_val) {
+            edv->string_val = strdup(evaluated_args[p].str_val);
+            track_alloc(edv->string_val);
+        } else {
+            edv->string_val = NULL;
+        }
+        edv->array_val = evaluated_args[p].arr_val;
+        edv->entity_val = evaluated_args[p].ent_val;
+        if (cd->param_types[p][0] != '\0') {
+            strncpy(edv->declared_type, cd->param_types[p], 63);
+            edv->declared_type[63] = '\0';
+        }
     }
 
     clone_metadata_store(&cd->meta, &ent->meta);
@@ -3841,6 +3878,48 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
                 }
             }
 
+            // Check if t.value is a Class for static property access: ClassName.property
+            ClassDef *cd_static = find_class(t.value);
+            if (cd_static) {
+                if (cd_static->static_start_line <= cd_static->static_end_line) {
+                    for (int line_idx = cd_static->static_start_line; line_idx <= cd_static->static_end_line; line_idx++) {
+                        Line *ln = &lines[line_idx];
+                        if (ln->text[0] == '\0' || ln->text[0] == '!') continue;
+                        const char *c = ln->text;
+                        Token pt = peekToken(&c);
+                        if (pt.type == TOKEN_PUBLIC) {
+                            freeToken(&pt);
+                            Token pub = getNextToken(&c); freeToken(&pub);
+                        } else {
+                            freeToken(&pt);
+                        }
+                        Token name_tok = getNextToken(&c);
+                        if (name_tok.type == TOKEN_ARR) {
+                            freeToken(&name_tok);
+                            name_tok = getNextToken(&c);
+                        }
+                        if (name_tok.type == TOKEN_IDENTIFIER && strcmp(name_tok.value, mem.value) == 0) {
+                            Token col = getNextToken(&c);
+                            if (col.type == TOKEN_COLON) {
+                                freeToken(&col);
+                                acc = evaluate_expression_val(&c, out_str, out_type, out_arr, out_ent);
+                                if (sign == -1 && *out_type == VAR_INT) acc *= -1;
+                                freeToken(&name_tok);
+                                freeToken(&mem);
+                                freeToken(&t);
+                                return acc;
+                            }
+                            freeToken(&col);
+                        }
+                        freeToken(&name_tok);
+                    }
+                }
+                char c_name[64] = ""; strncpy(c_name, cd_static->name, 63);
+                char m_name[64] = ""; strncpy(m_name, mem.value, 63);
+                freeToken(&mem); freeToken(&t);
+                throw_error("UndefinedVariableError", "Class '%s' has no static property '%s' on line %d", c_name, m_name, current_executing_line);
+            }
+
             // Variable lookup (Array, String, Entity)
             Variable *ev = get_var(t.value);
             if (ev && ev->type == VAR_ARRAY) {
@@ -4164,6 +4243,16 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
                     *out_str = entity_to_string(v->entity_val);
                 }
             } else {
+                ClassDef *cd = find_class(t.value);
+                if (cd) {
+                    Entity *ent = instantiate_entity(cd, cursor, current_executing_line);
+                    *out_type = VAR_ENTITY;
+                    if (out_ent) *out_ent = ent;
+                    current_reply.entity_val = ent;
+                    *out_str = entity_to_string(ent);
+                    freeToken(&t);
+                    return 0;
+                }
                 Routine *r = find_routine(t.value);
                 if (r) {
                     if (r->kind == ROUTINE_METHOD) {
@@ -5011,6 +5100,12 @@ void execute_line(const char *text, int line_num) {
             ev_name[63] = '\0';
             freeToken(&ev_tok);
             Token p_peek = peekToken(&cursor);
+            if (p_peek.type == TOKEN_COMMA) {
+                freeToken(&p_peek);
+                Token comma_tok = getNextToken(&cursor);
+                freeToken(&comma_tok);
+                p_peek = peekToken(&cursor);
+            }
             int has_p = 0;
             char *p_str = NULL; int p_type = VAR_INT; Array *p_arr = NULL; Entity *p_ent = NULL; int p_val = 0;
             if (p_peek.type != TOKEN_EOF) {
