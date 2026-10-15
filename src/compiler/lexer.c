@@ -114,11 +114,20 @@ Token getNextToken(const char **cursor) {
         return token;
     }
 
+    if (strncmp(*cursor, "x=", 2) == 0) { token.type = TOKEN_NOT_EQUAL; (*cursor) += 2; return token; }
+    if (strncmp(*cursor, "x&", 2) == 0) { token.type = TOKEN_BOOL_XAMP; (*cursor) += 2; return token; }
+
     // Identifiers and Keywords
     if (isalpha((unsigned char)**cursor) || **cursor == '_') {
         const char *start = *cursor;
         while (isalnum((unsigned char)**cursor) || **cursor == '_') (*cursor)++;
         size_t len = *cursor - start;
+
+        token.value = malloc(len + 1);
+        if (!token.value) { printf("ERROR: MemoryAllocationError\n"); exit(1); }
+        track_alloc(token.value);
+        strncpy(token.value, start, len);
+        token.value[len] = '\0';
 
         if (len == 7 && strncmp(start, "display", 7) == 0) {
             token.type = TOKEN_DISPLAY;
@@ -214,50 +223,34 @@ Token getNextToken(const char **cursor) {
         }
         if (len == 8 && strncmp(start, "DataType", 8) == 0) {
             token.type = TOKEN_DATATYPE;
-            token.value = strdup("DataType");
-            track_alloc(token.value);
             return token;
         }
         if (len == 7 && strncmp(start, "extends", 7) == 0) {
             token.type = TOKEN_EXTENDS;
-            token.value = strdup("extends");
-            track_alloc(token.value);
             return token;
         }
         if (len == 2 && strncmp(start, "it", 2) == 0) {
             token.type = TOKEN_IT;
-            token.value = strdup("it");
-            track_alloc(token.value);
             return token;
         }
         if (len == 3 && strncmp(start, "num", 3) == 0) {
             token.type = TOKEN_TYPE_NUM;
-            token.value = strdup("num");
-            track_alloc(token.value);
             return token;
         }
         if (len == 4 && strncmp(start, "bool", 4) == 0) {
             token.type = TOKEN_TYPE_BOOL;
-            token.value = strdup("bool");
-            track_alloc(token.value);
             return token;
         }
         if (len == 3 && strncmp(start, "str", 3) == 0) {
             token.type = TOKEN_TYPE_STR;
-            token.value = strdup("str");
-            track_alloc(token.value);
             return token;
         }
         if (len == 3 && strncmp(start, "arr", 3) == 0) {
             token.type = TOKEN_TYPE_ARR;
-            token.value = strdup("arr");
-            track_alloc(token.value);
             return token;
         }
         if (len == 6 && strncmp(start, "entity", 6) == 0) {
             token.type = TOKEN_TYPE_ENTITY;
-            token.value = strdup("entity");
-            track_alloc(token.value);
             return token;
         }
         if (len == 5 && strncmp(start, "class", 5) == 0) {
@@ -363,7 +356,6 @@ Token getNextToken(const char **cursor) {
         if (len == 4 && strncmp(start, "log2", 4) == 0) { token.type = TOKEN_LOG2; return token; }
         if (len == 3 && strncmp(start, "exp", 3) == 0) { token.type = TOKEN_EXP; return token; }
         if (len == 4 && strncmp(start, "lerp", 4) == 0) { token.type = TOKEN_LERP; return token; }
-        if (len == 2 && strncmp(start, "by", 2) == 0) { token.type = TOKEN_BY; return token; }
         if (len == 2 && strncmp(start, "is", 2) == 0) { token.type = TOKEN_IS; return token; }
         if (len == 4 && strncmp(start, "even", 4) == 0) { token.type = TOKEN_EVEN; return token; }
         if (len == 3 && strncmp(start, "odd", 3) == 0) { token.type = TOKEN_ODD; return token; }
@@ -387,11 +379,6 @@ Token getNextToken(const char **cursor) {
         if (len == 4 && strncmp(start, "with", 4) == 0) { token.type = TOKEN_WITH; return token; }
 
         token.type = TOKEN_IDENTIFIER;
-        token.value = malloc(len + 1);
-        if (!token.value) { printf("ERROR: MemoryAllocationError\n"); exit(1); }
-        track_alloc(token.value);
-        strncpy(token.value, start, len);
-        token.value[len] = '\0';
         return token;
     }
 

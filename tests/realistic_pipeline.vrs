@@ -1,0 +1,65 @@
+! ═══════════════════════════════════════════════════════════════════
+! VerScript Enterprise IoT Telemetry & Threat Mitigation Pipeline
+! Features: on start/exit, temp/del, inst, async/sync, chan, match, guard, |>, stdlib
+! ═══════════════════════════════════════════════════════════════════
+
+on start:
+  display "[NODE-BOOT] Edge Ingestion Gateway initialized cleanly." ?color=#38bdf8
+
+! 1. Ephemeral session auth with temp and del
+temp auth_token: "AUTH_SEC_9942"
+display "[SECURITY] Authenticating worker with ephemeral token..." ?color=#eab308
+del auth_token
+
+! 2. Stack-isolated instance state
+inst node_cluster: "Alpha-7"
+display "[CLUSTER] Active Node Partition: " + node_cluster ?color=#22c55e
+
+! 3. Asynchronous Sensor Telemetry Fetching
+async func fetch_telemetry sensor_id
+  set reading: sensor_id * 18 + 14
+  reply reading
+
+set handle: fetch_telemetry(4)
+set raw_metric: sync handle
+display "[TELEMETRY] Sensor 4 raw metric synchronized: " + raw_metric ?color=#38bdf8
+
+! 4. Guard Clause and Pipeline Data Normalization
+def func normalize_reading val
+  guard val > 0 else reply 0
+  reply val + 14
+
+def func clamp_metric val
+  reply Math.clamp(val, 0, 100)
+
+set processed_load: raw_metric |> normalize_reading |> clamp_metric
+display "[PIPELINE] Pipelined & Clamped Load: " + processed_load + "%" ?color=#22c55e
+
+! 5. Structural Pattern Matching on Telemetry Severity
+set threat_level: "ELEVATED"
+match threat_level
+  with "CRITICAL":
+    display "[ALERT] Immediate failover engaged!" ?color=#ef4444
+  with "ELEVATED":
+    display "[WARNING] High load detected. Rerouting traffic." ?color=#f59e0b
+  else:
+    display "[INFO] State nominal." ?color=#10b981
+
+! 6. High-Throughput FIFO Queue Distribution
+chan threat_queue
+send threat_queue, "SEC_EVENT_001"
+send threat_queue, "SEC_EVENT_002"
+
+set event1: recv threat_queue
+set event2: recv threat_queue
+display "[QUEUE] Consumed item: " + event1 ?color=#38bdf8
+display "[QUEUE] Consumed item: " + event2 ?color=#38bdf8
+
+! 7. Auto-Loaded Standard Library Utilities
+set report_label: Strings.toUpper("telemetry digest verified")
+display "[REPORT] " + report_label ?color=#a855f7
+set cluster_nodes: [101, 102, 103, 104]
+display "[STATUS] Monitored Nodes: " + (Arrays.len(cluster_nodes)) ?color=#22c55e
+
+on exit:
+  display "[SHUTDOWN] Pipeline drained. Node safe." ?color=#a855f7

@@ -475,10 +475,12 @@ void reset_custom_datatypes(void);
 
 void free_globals(void) {
     if (source_buffer) {
+        untrack_alloc(source_buffer);
         free(source_buffer);
         source_buffer = NULL;
     }
     if (current_reply.string_val) {
+        untrack_alloc(current_reply.string_val);
         free(current_reply.string_val);
         current_reply.string_val = NULL;
     }
@@ -487,6 +489,7 @@ void free_globals(void) {
     if (lines) {
         for (int i = 0; i < line_count; i++) {
             if (lines[i].text) {
+                untrack_alloc(lines[i].text);
                 free(lines[i].text);
                 lines[i].text = NULL;
             }
@@ -497,10 +500,12 @@ void free_globals(void) {
     if (symtable) {
         for (int i = 0; i < var_count; i++) {
             if (symtable[i].name) {
+                untrack_alloc(symtable[i].name);
                 free(symtable[i].name);
                 symtable[i].name = NULL;
             }
             if (symtable[i].string_val) {
+                untrack_alloc(symtable[i].string_val);
                 free(symtable[i].string_val);
                 symtable[i].string_val = NULL;
             }
@@ -1236,10 +1241,12 @@ void pop_scope(int target_depth) {
     while (var_count > 0 && symtable[var_count - 1].scope_level > target_depth) {
         var_count--;
         if (symtable[var_count].name) {
+            untrack_alloc(symtable[var_count].name);
             free(symtable[var_count].name);
             symtable[var_count].name = NULL;
         }
         if (symtable[var_count].string_val) {
+            untrack_alloc(symtable[var_count].string_val);
             free(symtable[var_count].string_val);
             symtable[var_count].string_val = NULL;
         }
@@ -1460,18 +1467,20 @@ Variable* set_var_scoped(const char *name, int line_num) {
             }
         }
         if (existing->scope_level < current_scope_depth) {
-            PurityKind cur_purity = PURITY_OUTBOUND;
-            const char *rname = "routine";
-            if (call_stack_ptr > 0) {
-                cur_purity = call_stack[call_stack_ptr - 1].routine->purity;
-                rname = call_stack[call_stack_ptr - 1].routine->name;
+            Routine *cur_routine = (call_stack_ptr > 0) ? call_stack[call_stack_ptr - 1].routine : NULL;
+            if (cur_routine && cur_routine->bound_library != NULL) {
+                existing = NULL;
+            } else {
+                PurityKind cur_purity = cur_routine ? cur_routine->purity : PURITY_OUTBOUND;
+                const char *rname = cur_routine ? cur_routine->name : "routine";
+                if (cur_purity == PURITY_INBOUND) {
+                    throw_error("ScopeViolationError", "Inbound routine '%s' cannot modify outer variable '%s' on line %d", rname, name, line_num);
+                }
+                return existing;
             }
-            if (cur_purity == PURITY_INBOUND) {
-                throw_error("ScopeViolationError", "Inbound routine '%s' cannot modify outer variable '%s' on line %d", rname, name, line_num);
-            }
+        } else {
             return existing;
         }
-        return existing;
     }
 
     if (var_count >= var_capacity) {
@@ -1703,7 +1712,6 @@ void validate_value_type(const char *type_name, int int_val, const char *str_val
         it_var->int_val = int_val;
         if (str_val) {
             it_var->string_val = strdup(str_val);
-            track_alloc(it_var->string_val);
         } else {
             it_var->string_val = NULL;
         }
@@ -2656,7 +2664,7 @@ Entity* instantiate_entity(ClassDef *cd, const char **cursor, int line_num) {
                 freeToken(&kind_tok);
 
                 Token mname = getNextToken(&c);
-                if (mname.type == TOKEN_IDENTIFIER) {
+                if (mname.value && mname.value[0] != '\0') {
                     strncpy(mr->name, mname.value, sizeof(mr->name) - 1);
                     mr->name[sizeof(mr->name) - 1] = '\0';
                 }
@@ -3145,7 +3153,7 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
             freeToken(&peek);
             Token dot = getNextToken(cursor); freeToken(&dot);
             Token mem = getNextToken(cursor);
-            if (mem.type != TOKEN_IDENTIFIER) { freeToken(&mem); throw_error("SyntaxError", "Expected member name after '.' on line %d", current_executing_line); }
+            if (!mem.value || mem.value[0] == '\0') { freeToken(&mem); throw_error("SyntaxError", "Expected member name after '.' on line %d", current_executing_line); }
             acc = dispatch_string_method(*out_str, mem.value, cursor, out_str, out_type, out_arr, out_ent, current_executing_line);
             freeToken(&mem);
         } else {
@@ -3494,7 +3502,7 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
             b = evaluate_operand_val(cursor, &s2, &t2, NULL, NULL);
             if (s2) { untrack_alloc(s2); free(s2); }
             Token by_tok = getNextToken(cursor);
-            if (by_tok.type != TOKEN_BY) { freeToken(&by_tok); throw_error("SyntaxError", "Expected 'by' in lerp on line %d", current_executing_line); }
+            if (by_tok.type != TOKEN_BY && (!by_tok.value || strcmp(by_tok.value, "by") != 0)) { freeToken(&by_tok); throw_error("SyntaxError", "Expected 'by' in lerp on line %d", current_executing_line); }
             freeToken(&by_tok);
             char *s3 = NULL; int t3 = VAR_INT;
             t_val = evaluate_operand_val(cursor, &s3, &t3, NULL, NULL);
@@ -3571,7 +3579,7 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
             freeToken(&dot_peek);
             Token dot = getNextToken(cursor); freeToken(&dot);
             Token mem = getNextToken(cursor);
-            if (mem.type != TOKEN_IDENTIFIER) { freeToken(&mem); throw_error("SyntaxError", "Expected member name after '.' on line %d", current_executing_line); }
+            if (!mem.value || mem.value[0] == '\0') { freeToken(&mem); throw_error("SyntaxError", "Expected member name after '.' on line %d", current_executing_line); }
             acc = dispatch_array_method(arr, mem.value, cursor, out_str, out_type, out_arr, out_ent, current_executing_line);
             freeToken(&mem);
         } else {
@@ -3632,7 +3640,8 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
         }
 
         // 2. Check if array indexing: arr[index]
-        if (peek.type == TOKEN_LBRACKET) {
+        Variable *arr_var = get_var(t.value);
+        if (peek.type == TOKEN_LBRACKET && arr_var && arr_var->type == VAR_ARRAY) {
             freeToken(&peek);
             Token lb = getNextToken(cursor); freeToken(&lb);
             char *idx_str = NULL;
@@ -3645,10 +3654,7 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
             }
             freeToken(&rb);
 
-            Variable *v = get_var(t.value);
-            if (!v || v->type != VAR_ARRAY || !v->array_val) {
-                throw_error("UndefinedVariableError", "Variable '%s' is not an array on line %d", t.value, current_executing_line);
-            }
+            Variable *v = arr_var;
             if (idx_val < 0 || idx_val >= v->array_val->count) {
                 throw_error("IndexOutOfBoundsError", "Array index %d out of bounds (length %d) on line %d", idx_val, v->array_val->count, current_executing_line);
             }
@@ -3747,7 +3753,7 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
             freeToken(&peek);
             Token dot = getNextToken(cursor); freeToken(&dot);
             Token mem = getNextToken(cursor);
-            if (mem.type != TOKEN_IDENTIFIER) {
+            if (!mem.value || mem.value[0] == '\0') {
                 freeToken(&mem);
                 throw_error("SyntaxError", "Expected member name after '.' on line %d", current_executing_line);
             }
@@ -3846,7 +3852,7 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
                     freeToken(&chain_dot);
                     Token d = getNextToken(cursor); freeToken(&d);
                     Token nm = getNextToken(cursor);
-                    if (nm.type != TOKEN_IDENTIFIER) { freeToken(&nm); throw_error("SyntaxError", "Expected member name after '.' on line %d", current_executing_line); }
+                    if (!nm.value || nm.value[0] == '\0') { freeToken(&nm); throw_error("SyntaxError", "Expected member name after '.' on line %d", current_executing_line); }
                     if (*out_type == VAR_ARRAY && out_arr && *out_arr) {
                         acc = dispatch_array_method(*out_arr, nm.value, cursor, out_str, out_type, out_arr, out_ent, current_executing_line);
                     } else if (*out_type == VAR_STRING && *out_str) {
@@ -3951,46 +3957,32 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
         }
         freeToken(&peek);
 
-        // 4. Routine lookup (user routines or library routines)
-        Routine *r = find_routine(t.value);
-        if (r) {
-            if (r->kind == ROUTINE_METHOD) {
-                throw_error("SyntaxError", "Cannot use method '%s' in an expression on line %d", r->name, current_executing_line);
-            }
-            Token call_peek = peekToken(cursor);
-            int has_parens = 0;
-            if (call_peek.type == TOKEN_LPAREN) {
-                has_parens = 1;
+        Token call_peek = peekToken(cursor);
+        if (call_peek.type == TOKEN_LPAREN) {
+            Routine *r = find_routine(t.value);
+            if (r) {
+                if (r->kind == ROUTINE_METHOD) {
+                    freeToken(&call_peek);
+                    throw_error("SyntaxError", "Cannot use method '%s' in an expression on line %d", r->name, current_executing_line);
+                }
                 freeToken(&call_peek);
                 Token lp = getNextToken(cursor); freeToken(&lp);
-            } else {
-                freeToken(&call_peek);
-            }
-            call_routine_val(r, cursor, out_str, out_type, &acc, current_executing_line);
-            if (has_parens) {
+                call_routine_val(r, cursor, out_str, out_type, &acc, current_executing_line);
                 Token rp = getNextToken(cursor);
                 if (rp.type != TOKEN_RPAREN) {
                     freeToken(&rp);
                     throw_error("SyntaxError", "Expected ')' on line %d", current_executing_line);
                 }
                 freeToken(&rp);
-            }
-            if (out_arr && *out_type == VAR_ARRAY) *out_arr = current_reply.array_val;
-            if (out_ent && *out_type == VAR_ENTITY) *out_ent = current_reply.entity_val;
-            if (sign == -1) {
-                if (*out_type != VAR_INT && *out_type != VAR_BOOL) {
-                    throw_error("InvalidOperandError", "Invalid operand for unary '-' on line %d", current_executing_line);
+                if (out_arr && *out_type == VAR_ARRAY) *out_arr = current_reply.array_val;
+                if (out_ent && *out_type == VAR_ENTITY) *out_ent = current_reply.entity_val;
+                if (sign == -1) {
+                    if (*out_type != VAR_INT && *out_type != VAR_BOOL) {
+                        throw_error("InvalidOperandError", "Invalid operand for unary '-' on line %d", current_executing_line);
+                    }
+                    acc *= -1;
                 }
-                acc *= -1;
-            }
-        } else if (is_pseudo_method_name(t.value) && !get_var(t.value)) {
-            acc = dispatch_pseudo_method(t.value, cursor, out_str, out_type, out_arr, out_ent, current_executing_line);
-            if (sign == -1 && *out_type == VAR_INT) acc *= -1;
-            freeToken(&t);
-            return acc;
-        } else if (is_native_func_name(t.value)) {
-            Token call_peek = peekToken(cursor);
-            if (call_peek.type == TOKEN_LPAREN) {
+            } else if (is_native_func_name(t.value)) {
                 freeToken(&call_peek);
                 Token lp = getNextToken(cursor); freeToken(&lp);
                 char *a1_str = NULL;
@@ -4136,36 +4128,18 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
                 }
                 freeToken(&t);
                 return acc;
+            } else if (is_pseudo_method_name(t.value) && !get_var(t.value)) {
+                freeToken(&call_peek);
+                acc = dispatch_pseudo_method(t.value, cursor, out_str, out_type, out_arr, out_ent, current_executing_line);
+                if (sign == -1 && *out_type == VAR_INT) acc *= -1;
+                freeToken(&t);
+                return acc;
             } else {
                 freeToken(&call_peek);
-                Variable *v = get_var(t.value);
-                if (v) {
-                    if (v->type == VAR_INT) acc = v->int_val * sign;
-                    else if (v->type == VAR_BOOL) {
-                        if (sign == -1) throw_error("InvalidOperandError", "Invalid operand for unary '-' on line %d", current_executing_line);
-                        acc = v->int_val;
-                        *out_type = VAR_BOOL;
-                    } else if (v->type == VAR_STRING) {
-                        if (sign == -1) throw_error("InvalidOperandError", "Invalid operand for unary '-' on line %d", current_executing_line);
-                        *out_str = strdup(v->string_val ? v->string_val : "");
-                        track_alloc(*out_str);
-                        *out_type = VAR_STRING;
-                    } else if (v->type == VAR_ARRAY) {
-                        *out_type = VAR_ARRAY;
-                        if (out_arr) *out_arr = v->array_val;
-                        current_reply.array_val = v->array_val;
-                        *out_str = array_to_string(v->array_val);
-                    } else if (v->type == VAR_ENTITY) {
-                        *out_type = VAR_ENTITY;
-                        if (out_ent) *out_ent = v->entity_val;
-                        current_reply.entity_val = v->entity_val;
-                        *out_str = entity_to_string(v->entity_val);
-                    }
-                } else {
-                    throw_error("UndefinedVariableError", "Undefined variable '%s' on line %d", t.value, current_executing_line);
-                }
+                throw_error("UndefinedFunctionError", "Undefined function '%s' on line %d", t.value, current_executing_line);
             }
         } else {
+            freeToken(&call_peek);
             Variable *v = get_var(t.value);
             if (v) {
                 if (v->type == VAR_INT) acc = v->int_val * sign;
@@ -4190,7 +4164,28 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
                     *out_str = entity_to_string(v->entity_val);
                 }
             } else {
-                throw_error("UndefinedVariableError", "Undefined variable '%s' on line %d", t.value, current_executing_line);
+                Routine *r = find_routine(t.value);
+                if (r) {
+                    if (r->kind == ROUTINE_METHOD) {
+                        throw_error("SyntaxError", "Cannot use method '%s' in an expression on line %d", r->name, current_executing_line);
+                    }
+                    call_routine_val(r, cursor, out_str, out_type, &acc, current_executing_line);
+                    if (out_arr && *out_type == VAR_ARRAY) *out_arr = current_reply.array_val;
+                    if (out_ent && *out_type == VAR_ENTITY) *out_ent = current_reply.entity_val;
+                    if (sign == -1) {
+                        if (*out_type != VAR_INT && *out_type != VAR_BOOL) {
+                            throw_error("InvalidOperandError", "Invalid operand for unary '-' on line %d", current_executing_line);
+                        }
+                        acc *= -1;
+                    }
+                } else if (is_pseudo_method_name(t.value)) {
+                    acc = dispatch_pseudo_method(t.value, cursor, out_str, out_type, out_arr, out_ent, current_executing_line);
+                    if (sign == -1 && *out_type == VAR_INT) acc *= -1;
+                    freeToken(&t);
+                    return acc;
+                } else {
+                    throw_error("UndefinedVariableError", "Undefined variable '%s' on line %d", t.value, current_executing_line);
+                }
             }
         }
     } else {
@@ -4207,7 +4202,7 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
         freeToken(&chain_dot);
         Token dot = getNextToken(cursor); freeToken(&dot);
         Token next_mem = getNextToken(cursor);
-        if (next_mem.type != TOKEN_IDENTIFIER) {
+        if (!next_mem.value || next_mem.value[0] == '\0') {
             freeToken(&next_mem);
             throw_error("SyntaxError", "Expected member name after '.' on line %d", current_executing_line);
         }
@@ -4716,7 +4711,7 @@ void parse_and_register_routine(const char *def_line, int body_start, int body_e
     freeToken(&tok);
 
     Token name_tok = getNextToken(&cursor);
-    if (name_tok.type != TOKEN_IDENTIFIER) {
+    if (!name_tok.value || name_tok.value[0] == '\0') {
         freeToken(&name_tok);
         throw_error("SyntaxError", "Expected routine name in definition on line %d", line_num);
     }
@@ -4960,6 +4955,14 @@ void execute_line(const char *text, int line_num) {
                 char full_ch[64]; strncpy(full_ch, ch->name, 63); full_ch[63] = '\0';
                 freeToken(&ch_tok);
                 throw_error("ChannelError", "Channel '%s' is full on line %d", full_ch, line_num);
+            }
+            Token sep = peekToken(&cursor);
+            if (sep.type == TOKEN_COMMA) {
+                freeToken(&sep);
+                Token comma_tok = getNextToken(&cursor);
+                freeToken(&comma_tok);
+            } else {
+                freeToken(&sep);
             }
             char *s_str = NULL; int s_type = VAR_INT; Array *s_arr = NULL; Entity *s_ent = NULL;
             int s_val = evaluate_expression_val(&cursor, &s_str, &s_type, &s_arr, &s_ent);
@@ -5501,7 +5504,7 @@ void execute_line(const char *text, int line_num) {
                 }
                 Token dot = getNextToken(&cursor); freeToken(&dot);
                 Token mem = getNextToken(&cursor);
-                if (mem.type != TOKEN_IDENTIFIER) {
+                if (!mem.value || mem.value[0] == '\0') {
                     freeToken(&mem);
                     throw_error("SyntaxError", "Expected member name after '.' on line %d", line_num);
                 }
@@ -5612,16 +5615,18 @@ void execute_line(const char *text, int line_num) {
                         }
                     }
                 } else {
-                    int has_parens = 0;
-                    if (after_mem.type == TOKEN_LPAREN) {
-                        has_parens = 1;
-                        freeToken(&after_mem);
-                        Token lp = getNextToken(&cursor); freeToken(&lp);
-                    } else {
-                        freeToken(&after_mem);
-                    }
+                    freeToken(&after_mem);
                     LibraryDef *lib = find_library(t.value);
                     if (lib) {
+                        Token call_peek = peekToken(&cursor);
+                        int has_parens = 0;
+                        if (call_peek.type == TOKEN_LPAREN) {
+                            has_parens = 1;
+                            freeToken(&call_peek);
+                            Token lp = getNextToken(&cursor); freeToken(&lp);
+                        } else {
+                            freeToken(&call_peek);
+                        }
                         if (strcmp(mem.value, "meta") == 0) {
                             char l_name[64] = ""; strncpy(l_name, lib->name, 63); l_name[63] = '\0';
                             freeToken(&mem); freeToken(&t);
@@ -5646,6 +5651,7 @@ void execute_line(const char *text, int line_num) {
                             Array *m_arr = NULL;
                             Entity *m_ent = NULL;
                             dispatch_array_method(ev->array_val, mem.value, &cursor, &m_str, &m_type, &m_arr, &m_ent, line_num);
+                            if (m_str) { untrack_alloc(m_str); free(m_str); }
                             freeToken(&mem);
                             continue;
                         } else if (ev && ev->type == VAR_STRING) {
@@ -5654,10 +5660,20 @@ void execute_line(const char *text, int line_num) {
                             Array *m_arr = NULL;
                             Entity *m_ent = NULL;
                             dispatch_string_method(ev->string_val ? ev->string_val : "", mem.value, &cursor, &m_str, &m_type, &m_arr, &m_ent, line_num);
+                            if (m_str) { untrack_alloc(m_str); free(m_str); }
                             freeToken(&mem);
                             continue;
                         } else if (ev && ev->type == VAR_ENTITY && ev->entity_val) {
                             Entity *ent = ev->entity_val;
+                            Token call_peek = peekToken(&cursor);
+                            int has_parens = 0;
+                            if (call_peek.type == TOKEN_LPAREN) {
+                                has_parens = 1;
+                                freeToken(&call_peek);
+                                Token lp = getNextToken(&cursor); freeToken(&lp);
+                            } else {
+                                freeToken(&call_peek);
+                            }
                             if (strcmp(mem.value, "meta") == 0) {
                                 char c_name[64] = ""; strncpy(c_name, ent->class_name, 63); c_name[63] = '\0';
                                 freeToken(&mem); freeToken(&t);
@@ -5835,14 +5851,14 @@ void execute_block(int start, int end) {
                 if (strncmp(effective_text, "on ", 3) == 0) {
                     const char *ev_cursor = effective_text + 3;
                     while (isspace((unsigned char)*ev_cursor)) ev_cursor++;
-                    if (strncmp(ev_cursor, "start", 5) == 0 && (ev_cursor[5] == '\0' || isspace((unsigned char)ev_cursor[5]))) {
+                    if (strncmp(ev_cursor, "start", 5) == 0 && (ev_cursor[5] == ':' || ev_cursor[5] == '\0' || isspace((unsigned char)ev_cursor[5]))) {
                         int saved_stack = current_stack_id;
                         current_stack_id = ++stack_counter;
                         if (block_start <= block_end) {
                             execute_block(block_start, block_end);
                         }
                         current_stack_id = saved_stack;
-                    } else if (strncmp(ev_cursor, "exit", 4) == 0 && (ev_cursor[4] == '\0' || isspace((unsigned char)ev_cursor[4]))) {
+                    } else if (strncmp(ev_cursor, "exit", 4) == 0 && (ev_cursor[4] == ':' || ev_cursor[4] == '\0' || isspace((unsigned char)ev_cursor[4]))) {
                         if (event_listener_count < MAX_EVENT_LISTENERS) {
                             EventListener *el = &event_listeners[event_listener_count++];
                             memset(el, 0, sizeof(EventListener));
@@ -5851,7 +5867,7 @@ void execute_block(int start, int end) {
                             el->start_line = block_start;
                             el->end_line = block_end;
                         }
-                    } else if (strncmp(ev_cursor, "error", 5) == 0 && (ev_cursor[5] == '\0' || isspace((unsigned char)ev_cursor[5]))) {
+                    } else if (strncmp(ev_cursor, "error", 5) == 0 && (ev_cursor[5] == ':' || ev_cursor[5] == '\0' || isspace((unsigned char)ev_cursor[5]))) {
                         if (event_listener_count < MAX_EVENT_LISTENERS) {
                             EventListener *el = &event_listeners[event_listener_count++];
                             memset(el, 0, sizeof(EventListener));
@@ -5860,13 +5876,14 @@ void execute_block(int start, int end) {
                             el->start_line = block_start;
                             el->end_line = block_end;
                         }
-                    } else if (strncmp(ev_cursor, "complete", 8) == 0 && (ev_cursor[8] == '\0' || isspace((unsigned char)ev_cursor[8]))) {
+                    } else if (strncmp(ev_cursor, "complete", 8) == 0 && (ev_cursor[8] == ':' || ev_cursor[8] == '\0' || isspace((unsigned char)ev_cursor[8]))) {
                         if (event_listener_count < MAX_EVENT_LISTENERS) {
                             EventListener *el = &event_listeners[event_listener_count++];
                             memset(el, 0, sizeof(EventListener));
                             el->type = EVENT_COMPLETE;
                             strncpy(el->event_name, "complete", 63);
                             const char *p = ev_cursor + 8;
+                            if (*p == ':') p++;
                             while (isspace((unsigned char)*p)) p++;
                             if (*p != '\0') strncpy(el->param_name, p, 63);
                             el->start_line = block_start;
@@ -5898,6 +5915,8 @@ void execute_block(int start, int end) {
                         char ev_name[64] = "";
                         char p_name[64] = "";
                         sscanf(ev_cursor, "%63s %63s", ev_name, p_name);
+                        char *c_pos = strchr(ev_name, ':');
+                        if (c_pos) *c_pos = '\0';
                         if (event_listener_count < MAX_EVENT_LISTENERS) {
                             EventListener *el = &event_listeners[event_listener_count++];
                             memset(el, 0, sizeof(EventListener));
@@ -6139,7 +6158,6 @@ void execute_block(int start, int end) {
                 Variable *dt_var = set_var_scoped(dt_name, line->line_num);
                 dt_var->type = VAR_STRING;
                 dt_var->string_val = strdup("DataType");
-                track_alloc(dt_var->string_val);
                 strncpy(dt_var->declared_type, "DataType", 63);
                 dt_var->declared_type[63] = '\0';
 
@@ -6305,10 +6323,11 @@ void execute_block(int start, int end) {
                             lr->kind = (kind_tok.type == TOKEN_FUNC) ? ROUTINE_FUNC : ROUTINE_METHOD;
                             freeToken(&kind_tok);
                             Token rname = getNextToken(&c);
-                            if (rname.type == TOKEN_IDENTIFIER) {
+                            if (rname.value && rname.value[0] != '\0') {
                                 strncpy(lr->name, rname.value, 63);
                                 lr->name[63] = '\0';
                             }
+                            freeToken(&rname);
                             parse_parameter_list(&c, lr->params, lr->param_types, &lr->param_count);
                             idx = meth_end;
                         } else {
@@ -6519,8 +6538,15 @@ void execute_block(int start, int end) {
                 if (out_type == VAR_STRING) {
                     throw_error("LoopIterationError", "Iterate start must be numeric on line %d", line->line_num);
                 }
+            } else if (strncmp(cursor, "to", 2) == 0 && (isspace((unsigned char)cursor[2]) || cursor[2] == '\0')) {
+                Variable *ex_v = get_var(var_name);
+                if (ex_v && ex_v->type == VAR_INT) {
+                    start_val = ex_v->int_val;
+                } else {
+                    start_val = 0;
+                }
             } else {
-                throw_error("SyntaxError", "Expected 'from' after identifier in iterate on line %d", line->line_num);
+                throw_error("SyntaxError", "Expected 'from' or 'to' after identifier in iterate on line %d", line->line_num);
             }
 
             while (isspace((unsigned char)*cursor)) cursor++;
@@ -7265,6 +7291,19 @@ void load_library_source(const char *source, const char *origin_name, int line_n
     }
 }
 
+char exec_dir[512] = "";
+
+void set_exec_dir(const char *path) {
+    if (!path) return;
+    strncpy(exec_dir, path, sizeof(exec_dir) - 1);
+    exec_dir[sizeof(exec_dir) - 1] = '\0';
+    char *p1 = strrchr(exec_dir, '/');
+    char *p2 = strrchr(exec_dir, '\\');
+    char *p = (p1 > p2) ? p1 : p2;
+    if (p) *p = '\0';
+    else exec_dir[0] = '\0';
+}
+
 void load_library(const char *target, int line_num) {
     if (!target || target[0] == '\0') {
         throw_error("FileError", "Invalid library name on line %d", line_num);
@@ -7275,7 +7314,7 @@ void load_library(const char *target, int line_num) {
 
     const char *embedded = get_embedded_core_lib(target);
 
-    char candidates[8][256];
+    char candidates[16][1024];
     int cand_count = 0;
 
     snprintf(candidates[cand_count++], sizeof(candidates[0]), "%s", target);
@@ -7284,6 +7323,11 @@ void load_library(const char *target, int line_num) {
     snprintf(candidates[cand_count++], sizeof(candidates[0]), "../stdlib/%s.lib.vrs", target);
     snprintf(candidates[cand_count++], sizeof(candidates[0]), "core_libs/%s.lib.vrs", target);
     snprintf(candidates[cand_count++], sizeof(candidates[0]), "%s.vrs", target);
+    if (exec_dir[0] != '\0') {
+        snprintf(candidates[cand_count++], sizeof(candidates[0]), "%s/stdlib/%s.lib.vrs", exec_dir, target);
+        snprintf(candidates[cand_count++], sizeof(candidates[0]), "%s/../stdlib/%s.lib.vrs", exec_dir, target);
+        snprintf(candidates[cand_count++], sizeof(candidates[0]), "%s/../../stdlib/%s.lib.vrs", exec_dir, target);
+    }
 
     FILE *f = NULL;
     for (int i = 0; i < cand_count; i++) {
@@ -7335,6 +7379,8 @@ int main(int argc, char *argv[]) {
         printf("Usage: %s <filename>\n", argv[0]);
         return 1;
     }
+
+    set_exec_dir(argv[0]);
 
     FILE *file = fopen(argv[1], "rb");
     if (!file) {
