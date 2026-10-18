@@ -125,7 +125,7 @@ const grammar = {
         { name: "storage.modifier.section.verscript", match: "\\b(static|dynamic|meta|thisstatic|const)\\b" },
         { name: "storage.modifier.visibility.verscript", match: "\\b(public|private)\\b" },
         { name: "storage.modifier.lifecycle.verscript", match: "\\b(inbound|outbound|outscope|temp|inst)\\b" },
-        { name: "keyword.control.directive.verscript", match: "\\b(import|inject|del)\\b" }
+        { name: "keyword.control.directive.verscript", match: "\\b(import|from|as|load|inject|del)\\b" }
       ]
     },
     "keywords-control": {
@@ -174,7 +174,7 @@ const grammar = {
         },
         {
           name: "support.function.method.verscript",
-          match: "\\b(length|len|isEmpty|indexOf|contains|startsWith|endsWith|slice|reverse|join|trim|toUpper|toLower|split|repeat|padLeft|padRight|push|pop|shift|unshift|count)\\b"
+          match: "\\b(length|len|isEmpty|indexOf|lastIndexOf|contains|startsWith|endsWith|slice|reverse|join|trim|toUpper|toLower|split|repeat|padLeft|padRight|push|pop|shift|unshift|count)\\b"
         }
       ]
     },

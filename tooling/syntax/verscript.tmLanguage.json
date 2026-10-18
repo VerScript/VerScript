@@ -158,7 +158,7 @@
         },
         {
           "name": "keyword.control.directive.verscript",
-          "match": "\\b(import|inject|del)\\b"
+          "match": "\\b(import|from|as|load|inject|del)\\b"
         }
       ]
     },
@@ -202,7 +202,7 @@
       "patterns": [
         {
           "name": "support.type.exception.verscript",
-          "match": "\\b(MemoryAllocationError|UndefinedVariableError|InvalidOperandError|DivisionByZeroError|IndentationError|LoopIterationError|LoopLimitError|LoopDirectionError|LoopStepError|ScopeViolationError|SyntaxError|RuntimeError|InvalidErrorNameError|SystemError|VisibilityError|ImmutableError|IndexOutOfBoundsError|EntityError|FileError|DomainError|AssertError|DataTypeError|UnassignedVariableError|AsyncError|ChannelError|MatchError)\\b"
+          "match": "\\b(MemoryAllocationError|UndefinedVariableError|InvalidOperandError|DivisionByZeroError|IndentationError|LoopIterationError|LoopLimitError|LoopDirectionError|LoopStepError|ScopeViolationError|SyntaxError|RuntimeError|InvalidErrorNameError|SystemError|VisibilityError|ImmutableError|IndexOutOfBoundsError|EntityError|FileError|DomainError|AssertError|DataTypeError|UnassignedVariableError|AsyncError|ChannelError|MatchError|AssertionError)\\b"
         }
       ]
     },
@@ -226,7 +226,7 @@
         },
         {
           "name": "support.function.method.verscript",
-          "match": "\\b(length|len|isEmpty|indexOf|contains|startsWith|endsWith|slice|reverse|join|trim|toUpper|toLower|split|repeat|padLeft|padRight|push|pop|shift|unshift|count)\\b"
+          "match": "\\b(length|len|isEmpty|indexOf|lastIndexOf|contains|startsWith|endsWith|slice|reverse|join|trim|toUpper|toLower|split|repeat|padLeft|padRight|push|pop|shift|unshift|count)\\b"
         }
       ]
     },
