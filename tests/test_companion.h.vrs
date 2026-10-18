@@ -1,0 +1,13 @@
+! Companion Header file for test_companion.vrs
+
+header ServiceHeader:
+    config:
+        strict_mode: true
+        error_mode: "strict"
+
+enum ServiceRole:
+    Admin = 100
+    Moderator = 50
+    User = 10
+
+set SERVICE_NAME: "AuthService"

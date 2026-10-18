@@ -1,0 +1,15 @@
+! Test Ternary Expressions
+
+set val1: if 10 > 5 then "Greater" else "Lesser"
+display val1
+
+set val2: if 3 > 99 then "Impossible" else "Normal"
+display val2
+
+set x: 15
+set res: if x == 15 then 100 else 0
+display res
+
+! Nested in expression
+set calc: (if x > 10 then 20 else 5) + 30
+display calc

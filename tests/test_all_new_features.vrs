@@ -1,0 +1,62 @@
+! Comprehensive test suite for all new VerScript language features and headers
+
+include "tests/app_config.h.vrs"
+
+! 1. Headers & Config verification
+Assert.equal(APP_VERSION, "2.4.0", "app version")
+Assert.equal(MAX_RETRIES, 5, "max retries")
+
+! 2. Ternary Expressions
+set status_text: if 100 > 50 then "Passed" else "Failed"
+Assert.equal(status_text, "Passed", "ternary greater")
+
+set min_val: if 3 < 10 then 3 else 10
+Assert.equal(min_val, 3, "ternary lesser")
+
+set arithmetic: (if 1 then 40 else 10) + 2
+Assert.equal(arithmetic, 42, "ternary arithmetic")
+
+! 3. Enums
+enum Direction: North = 1, East = 2, South = 3, West = 4
+Assert.equal(Direction.North, 1, "enum north")
+Assert.equal(Direction.East, 2, "enum east")
+Assert.equal(Direction.South, 3, "enum south")
+Assert.equal(Direction.West, 4, "enum west")
+
+! 4. Structs
+struct Vector2: x: num, y: num
+set v: Vector2(12, 34)
+Assert.equal(v.x, 12, "struct field x")
+Assert.equal(v.y, 34, "struct field y")
+
+! 5. Pipeline Operator
+def func increment(n):
+    reply n + 1
+
+def func triple(n):
+    reply n * 3
+
+set piped: 4 |> increment |> triple
+Assert.equal(piped, 15, "pipeline chaining")
+
+set upper: "hello world" |> Strings.toUpper
+Assert.equal(upper, "HELLO WORLD", "pipeline library call")
+
+! 6. Match with Case & Guards
+def func evaluate_grade(score):
+    match score:
+        case 100:
+            reply "Perfect"
+        case _ if score >= 90:
+            reply "A"
+        case _ if score >= 75:
+            reply "B"
+        else:
+            reply "C"
+
+Assert.equal(evaluate_grade(100), "Perfect", "grade 100")
+Assert.equal(evaluate_grade(95), "A", "grade 95")
+Assert.equal(evaluate_grade(80), "B", "grade 80")
+Assert.equal(evaluate_grade(50), "C", "grade 50")
+
+display "ALL NEW LANGUAGE FEATURES & HEADERS PASSED SUCCESSFULLY!"

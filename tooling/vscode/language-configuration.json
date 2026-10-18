@@ -71,7 +71,7 @@
     ]
   ],
   "indentationRules": {
-    "increaseIndentPattern": "^\\s*(def|class|lib|DataType|alias|static:|dynamic:|meta:|thisstatic:|do|unless|if|match|with|loop|repeat|while|until|cycle|for).*$",
-    "decreaseIndentPattern": "^\\s*(unless|else|with|_:).*$"
+    "increaseIndentPattern": "^\\s*(def|class|lib|header|config:|enum|struct|DataType|alias|static:|dynamic:|meta:|thisstatic:|do|unless|if|match|with|case|loop|repeat|while|until|cycle|for).*$",
+    "decreaseIndentPattern": "^\\s*(unless|else|with|case|_:).*$"
   }
 }

@@ -25,7 +25,8 @@
         ],
         "extensions": [
           ".vrs",
-          ".lib.vrs"
+          ".lib.vrs",
+          ".h.vrs"
         ],
         "configuration": "./language-configuration.json",
         "icon": {

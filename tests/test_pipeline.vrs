@@ -1,0 +1,14 @@
+! Test Pipeline Operator
+
+def func double(x):
+    reply x * 2
+
+def func add_ten(x):
+    reply x + 10
+
+set start: 5
+set result: start |> double |> add_ten
+display result
+
+set str_res: "verscript" |> Strings.toUpper
+display str_res

@@ -1,0 +1,28 @@
+! Test First-Class Enums
+
+enum Status:
+    Pending
+    Active
+    Completed
+
+display Status.Pending
+display Status.Active
+display Status.Completed
+
+! Inline enum with explicit values
+enum Priority: Low = 10, Medium = 20, High = 30
+
+display Priority.Low
+display Priority.Medium
+display Priority.High
+
+! Enums inside match
+set current_status: Status.Active
+
+match current_status:
+    case Status.Pending:
+        display "Status is Pending"
+    case Status.Active:
+        display "Status is Active"
+    case Status.Completed:
+        display "Status is Completed"

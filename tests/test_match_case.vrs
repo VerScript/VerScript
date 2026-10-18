@@ -1,0 +1,19 @@
+! Test Pattern Matching with case and guards
+
+def func describe_status(code):
+    match code:
+        case 200:
+            reply "OK"
+        case 404:
+            reply "Not Found"
+        case 500:
+            reply "Internal Server Error"
+        case _ if code > 400:
+            reply "Client or Server Error"
+        else:
+            reply "Unknown"
+
+display describe_status(200)
+display describe_status(404)
+display describe_status(403)
+display describe_status(100)

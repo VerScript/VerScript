@@ -1,0 +1,6 @@
+! Test companion header auto-loading (no explicit include)
+
+display SERVICE_NAME
+display ServiceRole.Admin
+display ServiceRole.Moderator
+display ServiceRole.User

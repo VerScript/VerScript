@@ -1,0 +1,10 @@
+! Header with config options and constants
+
+header AppConfig:
+    config:
+        strict_mode: true
+        error_mode: "lenient"
+        timeout_ms: 3000
+
+set APP_VERSION: "2.4.0"
+set MAX_RETRIES: 5

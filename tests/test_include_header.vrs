@@ -1,0 +1,6 @@
+! Test explicit header inclusion
+
+include "tests/app_config.h.vrs"
+
+display APP_VERSION
+display MAX_RETRIES

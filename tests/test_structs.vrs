@@ -1,0 +1,16 @@
+! Test Lightweight Structs
+
+struct Point:
+    x: num
+    y: num
+
+set pt: Point(15, 25)
+display pt.x
+display pt.y
+
+! Inline struct
+struct User: name: str, age: num
+
+set u: User("Alice", 30)
+display u.name
+display u.age
