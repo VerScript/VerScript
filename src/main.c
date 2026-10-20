@@ -5554,6 +5554,9 @@ void parse_and_register_routine(const char *def_line, int body_start, int body_e
 
 void parse_lines(const char *buffer) {
     const char *p = buffer;
+    if ((unsigned char)p[0] == 0xEF && (unsigned char)p[1] == 0xBB && (unsigned char)p[2] == 0xBF) {
+        p += 3;
+    }
     int line_num = 1;
     int in_multiline_comment = 0;
 
@@ -5587,6 +5590,9 @@ void parse_lines(const char *buffer) {
                     if (src_ptr[0] == '!' && src_ptr[1] == '!') {
                         in_multiline_comment = 0;
                         src_ptr += 2;
+                    } else if (src_ptr[0] == '*' && src_ptr[1] == '/') {
+                        in_multiline_comment = 0;
+                        src_ptr += 2;
                     } else {
                         src_ptr++;
                     }
@@ -5594,8 +5600,17 @@ void parse_lines(const char *buffer) {
                     if (!in_string && src_ptr[0] == '!' && src_ptr[1] == '!') {
                         in_multiline_comment = 1;
                         src_ptr += 2;
+                    } else if (!in_string && src_ptr[0] == '/' && src_ptr[1] == '*') {
+                        in_multiline_comment = 1;
+                        src_ptr += 2;
                     } else if (!in_string && src_ptr[0] == '!' && src_ptr[1] != '!' && src_ptr[1] != '=') {
-                        // single line comment
+                        // canonical single-line comment !
+                        break;
+                    } else if (!in_string && src_ptr[0] == '/' && src_ptr[1] == '/') {
+                        // single-line comment //
+                        break;
+                    } else if (!in_string && src_ptr[0] == '#') {
+                        // single-line comment #
                         break;
                     } else {
                         clean_line[clean_pos++] = *src_ptr++;
@@ -8974,6 +8989,9 @@ void start_repl(void) {
 
         if (!in_multiline) {
             if (*trimmed == '\0') continue;
+            if (trimmed[0] == '!' || (trimmed[0] == '/' && trimmed[1] == '/') || trimmed[0] == '#') {
+                continue;
+            }
 
             if (strcmp(trimmed, "exit") == 0 || strcmp(trimmed, "quit") == 0 || strcmp(trimmed, "exit()") == 0) {
                 printf("Goodbye!\n");
@@ -9127,6 +9145,10 @@ int main(int argc, char *argv[]) {
     size_t read_bytes = fread(source_buffer, 1, length, file);
     source_buffer[read_bytes] = '\0';
     fclose(file);
+
+    if (read_bytes >= 3 && (unsigned char)source_buffer[0] == 0xEF && (unsigned char)source_buffer[1] == 0xBB && (unsigned char)source_buffer[2] == 0xBF) {
+        memmove(source_buffer, source_buffer + 3, read_bytes - 3 + 1);
+    }
 
     init_math_constants();
 

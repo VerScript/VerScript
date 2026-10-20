@@ -30,6 +30,12 @@ if (!(Test-Path $TargetDir)) {
 Copy-Item (Join-Path $RepoDir "verscript.exe") (Join-Path $TargetDir "verscript.exe") -Force
 Copy-Item (Join-Path $RepoDir "stdlib") (Join-Path $TargetDir "stdlib") -Recurse -Force
 
+# Also sync to MinGW64 bin if present so direct 'verscript' invocation in CMD works immediately
+$MinGwBin = "$env:USERPROFILE\mingw64\bin"
+if (Test-Path $MinGwBin) {
+    Copy-Item (Join-Path $RepoDir "verscript.exe") (Join-Path $MinGwBin "verscript.exe") -Force
+}
+
 $IcoSrc = if (Test-Path (Join-Path $RepoDir "tooling\installer\verscript.ico")) { Join-Path $RepoDir "tooling\installer\verscript.ico" } else { Join-Path $RepoDir "logo.ico" }
 $PngSrc = if (Test-Path (Join-Path $RepoDir "tooling\installer\verscript_logo.png")) { Join-Path $RepoDir "tooling\installer\verscript_logo.png" } else { Join-Path $RepoDir "logo.png" }
 

@@ -104,6 +104,24 @@ Token getNextToken(const char **cursor) {
             while (**cursor != '\n' && **cursor != '\0') (*cursor)++;
             had_leading_space = 1;
             continue;
+        } else if (**cursor == '#') {
+            // Single-line comment #
+            (*cursor)++;
+            while (**cursor != '\n' && **cursor != '\0') (*cursor)++;
+            had_leading_space = 1;
+            continue;
+        } else if (**cursor == '/' && *(*cursor + 1) == '*') {
+            // Block comment /* ... */
+            *cursor += 2;
+            while (**cursor != '\0') {
+                if (**cursor == '*' && *(*cursor + 1) == '/') {
+                    *cursor += 2;
+                    break;
+                }
+                (*cursor)++;
+            }
+            had_leading_space = 1;
+            continue;
         } else {
             break;
         }
