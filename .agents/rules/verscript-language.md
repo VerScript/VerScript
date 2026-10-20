@@ -82,3 +82,20 @@ VerScript is an ultra-fast, minimalist scripting language engineered to blend th
 ### 6. Reactive Events & Channels
 - Reactive events: `on event_name:`, `when condition:`, `emit "event_name", payload`
 - High-throughput FIFO channels: `channel queue_name`, `send queue_name, item`, `set item: recv queue_name`
+
+### 7. Comments
+- Canonical single-line comment: `! comment text`
+- Canonical multiline comment: `!! multiline comment !!`
+- Secondary backward-compatible comments: `// ...` and `# ...`
+
+### 8. Interactive Shell (REPL)
+- Running `verscript` without arguments opens the interactive REPL shell.
+- Features: auto-expression evaluation, persistent variable/routine state, error recovery with `setjmp`/`longjmp`, built-in commands (`vars`, `help`, `clear`, `exit`).
+
+### 9. Windows Binary Synchronization Guardrail
+- When building `verscript.exe` on Windows, synchronize to:
+  1. `C:\Users\alekhyo\mingw64\bin\verscript.exe` (MinGW bin directory)
+  2. `%LOCALAPPDATA%\VerScript\verscript.exe` (Local install)
+  3. `VerScript/bin/verscript.exe`
+  4. `verscript-studio-desktop/resources/bin/verscript.exe`
+
