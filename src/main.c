@@ -5913,6 +5913,24 @@ void execute_line(const char *text, int line_num) {
                         if (v->string_val) free(v->string_val);
                         v->string_val = strdup(input);
                     }
+                } else {
+                    if (def_val[0] != '\0') {
+                        char *endptr;
+                        long lval = strtol(def_val, &endptr, 10);
+                        if (*endptr == '\0') {
+                            v->type = VAR_INT;
+                            v->int_val = (int)lval;
+                            if (v->string_val) { free(v->string_val); v->string_val = NULL; }
+                        } else {
+                            v->type = VAR_STRING;
+                            if (v->string_val) free(v->string_val);
+                            v->string_val = strdup(def_val);
+                        }
+                    } else {
+                        v->type = VAR_STRING;
+                        if (v->string_val) free(v->string_val);
+                        v->string_val = strdup("");
+                    }
                 }
             } else {
                 throw_error("SyntaxError", "Expected variable name after prompt on line %d", line_num);
