@@ -675,6 +675,7 @@ int is_error_name(const char *name) {
     if (strcmp(name, "AsyncError") == 0) return 1;
     if (strcmp(name, "ChannelError") == 0) return 1;
     if (strcmp(name, "MatchError") == 0) return 1;
+    if (strcmp(name, "OperationError") == 0) return 1;
     return 0;
 }
 
@@ -3211,6 +3212,76 @@ int dispatch_string_method(const char *str, const char *method, const char **cur
     return 0;
 }
 
+static void skip_expression_or_ternary(const char **cursor) {
+    Token t = peekToken(cursor);
+    if (t.type == TOKEN_IF) {
+        Token consumed_if = getNextToken(cursor);
+        freeToken(&consumed_if);
+        freeToken(&t);
+        // Skip condition until TOKEN_THEN
+        int paren_depth = 0;
+        int bracket_depth = 0;
+        while (1) {
+            Token sk = peekToken(cursor);
+            if (sk.type == TOKEN_EOF) { freeToken(&sk); break; }
+            if (sk.type == TOKEN_THEN && paren_depth == 0 && bracket_depth == 0) {
+                freeToken(&sk);
+                Token th = getNextToken(cursor);
+                freeToken(&th);
+                break;
+            }
+            if (sk.type == TOKEN_LPAREN) paren_depth++;
+            else if (sk.type == TOKEN_RPAREN) { if (paren_depth > 0) paren_depth--; }
+            else if (sk.type == TOKEN_LBRACKET) bracket_depth++;
+            else if (sk.type == TOKEN_RBRACKET) { if (bracket_depth > 0) bracket_depth--; }
+            freeToken(&sk);
+            Token c = getNextToken(cursor);
+            freeToken(&c);
+        }
+        // Skip true branch
+        skip_expression_or_ternary(cursor);
+
+        // Match and consume TOKEN_ELSE
+        Token el = peekToken(cursor);
+        if (el.type == TOKEN_ELSE) {
+            freeToken(&el);
+            Token el_consumed = getNextToken(cursor);
+            freeToken(&el_consumed);
+            // Skip false branch
+            skip_expression_or_ternary(cursor);
+        } else {
+            freeToken(&el);
+        }
+    } else {
+        freeToken(&t);
+        int paren_depth = 0;
+        int bracket_depth = 0;
+        while (1) {
+            Token sk = peekToken(cursor);
+            if (sk.type == TOKEN_EOF) { freeToken(&sk); break; }
+            if (paren_depth == 0 && bracket_depth == 0) {
+                if (sk.type == TOKEN_ELSE || sk.type == TOKEN_RPAREN || 
+                    sk.type == TOKEN_RBRACKET || sk.type == TOKEN_COMMA) {
+                    freeToken(&sk);
+                    break;
+                }
+            }
+            if (sk.type == TOKEN_LPAREN) paren_depth++;
+            else if (sk.type == TOKEN_RPAREN) { if (paren_depth > 0) paren_depth--; }
+            else if (sk.type == TOKEN_LBRACKET) bracket_depth++;
+            else if (sk.type == TOKEN_RBRACKET) { if (bracket_depth > 0) bracket_depth--; }
+            else if (sk.type == TOKEN_IF) {
+                freeToken(&sk);
+                skip_expression_or_ternary(cursor);
+                continue;
+            }
+            freeToken(&sk);
+            Token c = getNextToken(cursor);
+            freeToken(&c);
+        }
+    }
+}
+
 int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Array **out_arr, Entity **out_ent) {
     *out_str = NULL;
     *out_type = VAR_INT;
@@ -3260,6 +3331,7 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
         return 0;
     }
 
+
     if (t.type == TOKEN_IF) {
         freeToken(&t);
         char *cond_str = NULL;
@@ -3285,50 +3357,15 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
                 throw_error("SyntaxError", "Expected 'else' in ternary expression on line %d", current_executing_line);
             }
             freeToken(&else_tok);
-            int paren_depth = 0;
-            int bracket_depth = 0;
-            while (1) {
-                Token sk = peekToken(cursor);
-                if (sk.type == TOKEN_EOF) { freeToken(&sk); break; }
-                if (sk.type == TOKEN_LPAREN) paren_depth++;
-                else if (sk.type == TOKEN_RPAREN) {
-                    if (paren_depth == 0) { freeToken(&sk); break; }
-                    paren_depth--;
-                }
-                else if (sk.type == TOKEN_LBRACKET) bracket_depth++;
-                else if (sk.type == TOKEN_RBRACKET) {
-                    if (bracket_depth == 0) { freeToken(&sk); break; }
-                    bracket_depth--;
-                }
-                else if (sk.type == TOKEN_COMMA) {
-                    if (paren_depth == 0 && bracket_depth == 0) { freeToken(&sk); break; }
-                }
-                freeToken(&sk);
-                Token consumed = getNextToken(cursor);
-                freeToken(&consumed);
-            }
+            skip_expression_or_ternary(cursor);
         } else {
-            int paren_depth = 0;
-            int bracket_depth = 0;
-            while (1) {
-                Token sk = peekToken(cursor);
-                if (sk.type == TOKEN_EOF) {
-                    freeToken(&sk);
-                    throw_error("SyntaxError", "Unexpected end of input, expected 'else' in ternary expression on line %d", current_executing_line);
-                }
-                if (sk.type == TOKEN_ELSE && paren_depth == 0 && bracket_depth == 0) {
-                    freeToken(&sk);
-                    Token el = getNextToken(cursor); freeToken(&el);
-                    break;
-                }
-                if (sk.type == TOKEN_LPAREN) paren_depth++;
-                else if (sk.type == TOKEN_RPAREN) { if (paren_depth > 0) paren_depth--; }
-                else if (sk.type == TOKEN_LBRACKET) bracket_depth++;
-                else if (sk.type == TOKEN_RBRACKET) { if (bracket_depth > 0) bracket_depth--; }
-                freeToken(&sk);
-                Token consumed = getNextToken(cursor);
-                freeToken(&consumed);
+            skip_expression_or_ternary(cursor);
+            Token else_tok = getNextToken(cursor);
+            if (else_tok.type != TOKEN_ELSE) {
+                freeToken(&else_tok);
+                throw_error("SyntaxError", "Expected 'else' in ternary expression on line %d", current_executing_line);
             }
+            freeToken(&else_tok);
             acc = evaluate_expression_val(cursor, out_str, out_type, out_arr, out_ent);
         }
         if (sign == -1 && *out_type == VAR_INT) acc *= -1;
@@ -4598,6 +4635,289 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
     return acc;
 }
 
+static int is_matrix_val(Array *arr, int *out_rows, int *out_cols) {
+    if (!arr || arr->count == 0) return 0;
+    if (arr->items[0].type != VAR_ARRAY || !arr->items[0].array_val) return 0;
+    int cols = arr->items[0].array_val->count;
+    for (int r = 1; r < arr->count; r++) {
+        if (arr->items[r].type != VAR_ARRAY || !arr->items[r].array_val) return 0;
+        if (arr->items[r].array_val->count != cols) return 0;
+    }
+    if (out_rows) *out_rows = arr->count;
+    if (out_cols) *out_cols = cols;
+    return 1;
+}
+
+static int is_vector_val(Array *arr, int *out_len) {
+    if (!arr) return 0;
+    if (arr->count > 0 && arr->items[0].type == VAR_ARRAY) return 0;
+    if (out_len) *out_len = arr->count;
+    return 1;
+}
+
+static int get_elem_int(Array *arr, int idx) {
+    if (!arr || idx < 0 || idx >= arr->count) return 0;
+    return arr->items[idx].int_val;
+}
+
+static int get_mat_elem_int(Array *mat, int r, int c) {
+    if (!mat || r < 0 || r >= mat->count) return 0;
+    Array *row = mat->items[r].array_val;
+    if (!row || c < 0 || c >= row->count) return 0;
+    return row->items[c].int_val;
+}
+
+static Array *create_matrix_val(int rows, int cols) {
+    Array *mat = create_array();
+    for (int r = 0; r < rows; r++) {
+        Array *row = create_array();
+        for (int c = 0; c < cols; c++) {
+            Variable v; memset(&v, 0, sizeof(v)); v.type = VAR_INT; v.int_val = 0;
+            array_append(row, &v);
+        }
+        Variable row_v; memset(&row_v, 0, sizeof(row_v)); row_v.type = VAR_ARRAY; row_v.array_val = row;
+        array_append(mat, &row_v);
+    }
+    return mat;
+}
+
+static Array *create_vector_val(int len) {
+    Array *vec = create_array();
+    for (int i = 0; i < len; i++) {
+        Variable v; memset(&v, 0, sizeof(v)); v.type = VAR_INT; v.int_val = 0;
+        array_append(vec, &v);
+    }
+    return vec;
+}
+
+static Array *perform_matrix_vector_add_sub(int is_sub, 
+    Array *lhs_arr, int lhs_type, int lhs_val,
+    Array *rhs_arr, int rhs_type, int rhs_val) 
+{
+    int r1 = 0, c1 = 0, r2 = 0, c2 = 0;
+    int vlen1 = 0, vlen2 = 0;
+    int lhs_is_mat = (lhs_type == VAR_ARRAY && is_matrix_val(lhs_arr, &r1, &c1));
+    int rhs_is_mat = (rhs_type == VAR_ARRAY && is_matrix_val(rhs_arr, &r2, &c2));
+    int lhs_is_vec = (lhs_type == VAR_ARRAY && !lhs_is_mat && is_vector_val(lhs_arr, &vlen1));
+    int rhs_is_vec = (rhs_type == VAR_ARRAY && !rhs_is_mat && is_vector_val(rhs_arr, &vlen2));
+
+    if (lhs_is_mat && rhs_is_mat) {
+        if (r1 != r2 || c1 != c2) {
+            throw_error("OperationError", "Inconsistent matrix dimensions for '%c': (%d, %d) vs (%d, %d) on line %d",
+                is_sub ? '-' : '+', r1, c1, r2, c2, current_executing_line);
+        }
+        Array *res = create_matrix_val(r1, c1);
+        for (int r = 0; r < r1; r++) {
+            Array *row = res->items[r].array_val;
+            for (int c = 0; c < c1; c++) {
+                int a = get_mat_elem_int(lhs_arr, r, c);
+                int b = get_mat_elem_int(rhs_arr, r, c);
+                row->items[c].int_val = is_sub ? (a - b) : (a + b);
+            }
+        }
+        return res;
+    }
+
+    if (lhs_is_vec && rhs_is_vec) {
+        if (vlen1 != vlen2) {
+            throw_error("OperationError", "Inconsistent vector dimensions for '%c': %d vs %d on line %d",
+                is_sub ? '-' : '+', vlen1, vlen2, current_executing_line);
+        }
+        Array *res = create_vector_val(vlen1);
+        for (int i = 0; i < vlen1; i++) {
+            int a = get_elem_int(lhs_arr, i);
+            int b = get_elem_int(rhs_arr, i);
+            res->items[i].int_val = is_sub ? (a - b) : (a + b);
+        }
+        return res;
+    }
+
+    if (lhs_is_mat && rhs_type == VAR_INT) {
+        Array *res = create_matrix_val(r1, c1);
+        for (int r = 0; r < r1; r++) {
+            Array *row = res->items[r].array_val;
+            for (int c = 0; c < c1; c++) {
+                int a = get_mat_elem_int(lhs_arr, r, c);
+                row->items[c].int_val = is_sub ? (a - rhs_val) : (a + rhs_val);
+            }
+        }
+        return res;
+    }
+
+    if (lhs_type == VAR_INT && rhs_is_mat && !is_sub) {
+        Array *res = create_matrix_val(r2, c2);
+        for (int r = 0; r < r2; r++) {
+            Array *row = res->items[r].array_val;
+            for (int c = 0; c < c2; c++) {
+                int b = get_mat_elem_int(rhs_arr, r, c);
+                row->items[c].int_val = lhs_val + b;
+            }
+        }
+        return res;
+    }
+
+    if (lhs_is_vec && rhs_type == VAR_INT) {
+        Array *res = create_vector_val(vlen1);
+        for (int i = 0; i < vlen1; i++) {
+            int a = get_elem_int(lhs_arr, i);
+            res->items[i].int_val = is_sub ? (a - rhs_val) : (a + rhs_val);
+        }
+        return res;
+    }
+
+    if (lhs_type == VAR_INT && rhs_is_vec && !is_sub) {
+        Array *res = create_vector_val(vlen2);
+        for (int i = 0; i < vlen2; i++) {
+            int b = get_elem_int(rhs_arr, i);
+            res->items[i].int_val = lhs_val + b;
+        }
+        return res;
+    }
+
+    throw_error("OperationError", "Inconsistent operand types for '%c' on line %d", is_sub ? '-' : '+', current_executing_line);
+    return NULL;
+}
+
+static void perform_matrix_vector_mul(
+    Array *lhs_arr, int lhs_type, int lhs_val,
+    Array *rhs_arr, int rhs_type, int rhs_val,
+    int *out_acc, int *out_type, Array **out_arr)
+{
+    int r1 = 0, c1 = 0, r2 = 0, c2 = 0;
+    int vlen1 = 0, vlen2 = 0;
+    int lhs_is_mat = (lhs_type == VAR_ARRAY && is_matrix_val(lhs_arr, &r1, &c1));
+    int rhs_is_mat = (rhs_type == VAR_ARRAY && is_matrix_val(rhs_arr, &r2, &c2));
+    int lhs_is_vec = (lhs_type == VAR_ARRAY && !lhs_is_mat && is_vector_val(lhs_arr, &vlen1));
+    int rhs_is_vec = (rhs_type == VAR_ARRAY && !rhs_is_mat && is_vector_val(rhs_arr, &vlen2));
+
+    if (lhs_is_mat && rhs_is_mat) {
+        if (c1 != r2) {
+            throw_error("OperationError", "Inconsistent matrix dimensions for '*': columns of LHS (%d) != rows of RHS (%d) on line %d",
+                c1, r2, current_executing_line);
+        }
+        Array *res = create_matrix_val(r1, c2);
+        for (int r = 0; r < r1; r++) {
+            Array *row = res->items[r].array_val;
+            for (int c = 0; c < c2; c++) {
+                int sum = 0;
+                for (int k = 0; k < c1; k++) {
+                    sum += get_mat_elem_int(lhs_arr, r, k) * get_mat_elem_int(rhs_arr, k, c);
+                }
+                row->items[c].int_val = sum;
+            }
+        }
+        *out_type = VAR_ARRAY;
+        *out_arr = res;
+        *out_acc = 0;
+        return;
+    }
+
+    if (lhs_is_mat && rhs_is_vec) {
+        if (c1 != vlen2) {
+            throw_error("OperationError", "Inconsistent dimensions for matrix * vector: matrix columns (%d) != vector dim (%d) on line %d",
+                c1, vlen2, current_executing_line);
+        }
+        Array *res = create_vector_val(r1);
+        for (int r = 0; r < r1; r++) {
+            int sum = 0;
+            for (int c = 0; c < c1; c++) {
+                sum += get_mat_elem_int(lhs_arr, r, c) * get_elem_int(rhs_arr, c);
+            }
+            res->items[r].int_val = sum;
+        }
+        *out_type = VAR_ARRAY;
+        *out_arr = res;
+        *out_acc = 0;
+        return;
+    }
+
+    if (lhs_is_vec && rhs_is_mat) {
+        if (vlen1 != r2) {
+            throw_error("OperationError", "Inconsistent dimensions for vector * matrix: vector dim (%d) != matrix rows (%d) on line %d",
+                vlen1, r2, current_executing_line);
+        }
+        Array *res = create_vector_val(c2);
+        for (int c = 0; c < c2; c++) {
+            int sum = 0;
+            for (int r = 0; r < r2; r++) {
+                sum += get_elem_int(lhs_arr, r) * get_mat_elem_int(rhs_arr, r, c);
+            }
+            res->items[c].int_val = sum;
+        }
+        *out_type = VAR_ARRAY;
+        *out_arr = res;
+        *out_acc = 0;
+        return;
+    }
+
+    if (lhs_is_vec && rhs_is_vec) {
+        if (vlen1 != vlen2) {
+            throw_error("OperationError", "Inconsistent vector dimensions for '*': %d vs %d on line %d",
+                vlen1, vlen2, current_executing_line);
+        }
+        int sum = 0;
+        for (int i = 0; i < vlen1; i++) {
+            sum += get_elem_int(lhs_arr, i) * get_elem_int(rhs_arr, i);
+        }
+        *out_type = VAR_INT;
+        *out_arr = NULL;
+        *out_acc = sum;
+        return;
+    }
+
+    if (lhs_is_mat && (rhs_type == VAR_INT || rhs_type == VAR_BOOL)) {
+        Array *res = create_matrix_val(r1, c1);
+        for (int r = 0; r < r1; r++) {
+            Array *row = res->items[r].array_val;
+            for (int c = 0; c < c1; c++) {
+                row->items[c].int_val = get_mat_elem_int(lhs_arr, r, c) * rhs_val;
+            }
+        }
+        *out_type = VAR_ARRAY;
+        *out_arr = res;
+        *out_acc = 0;
+        return;
+    }
+
+    if ((lhs_type == VAR_INT || lhs_type == VAR_BOOL) && rhs_is_mat) {
+        Array *res = create_matrix_val(r2, c2);
+        for (int r = 0; r < r2; r++) {
+            Array *row = res->items[r].array_val;
+            for (int c = 0; c < c2; c++) {
+                row->items[c].int_val = lhs_val * get_mat_elem_int(rhs_arr, r, c);
+            }
+        }
+        *out_type = VAR_ARRAY;
+        *out_arr = res;
+        *out_acc = 0;
+        return;
+    }
+
+    if (lhs_is_vec && (rhs_type == VAR_INT || rhs_type == VAR_BOOL)) {
+        Array *res = create_vector_val(vlen1);
+        for (int i = 0; i < vlen1; i++) {
+            res->items[i].int_val = get_elem_int(lhs_arr, i) * rhs_val;
+        }
+        *out_type = VAR_ARRAY;
+        *out_arr = res;
+        *out_acc = 0;
+        return;
+    }
+
+    if ((lhs_type == VAR_INT || lhs_type == VAR_BOOL) && rhs_is_vec) {
+        Array *res = create_vector_val(vlen2);
+        for (int i = 0; i < vlen2; i++) {
+            res->items[i].int_val = lhs_val * get_elem_int(rhs_arr, i);
+        }
+        *out_type = VAR_ARRAY;
+        *out_arr = res;
+        *out_acc = 0;
+        return;
+    }
+
+    throw_error("OperationError", "Inconsistent operand types for '*' on line %d", current_executing_line);
+}
+
 int evaluate_operand(const char **cursor, char **out_str, int *out_type) {
     return evaluate_operand_val(cursor, out_str, out_type, NULL, NULL);
 }
@@ -4643,11 +4963,25 @@ static int evaluate_multiplicative_val(const char **cursor, char **out_str, int 
             int rhs_val = evaluate_power_val(cursor, &rhs_str, &rhs_type, &rhs_arr, &rhs_ent);
 
             if (op_type == TOKEN_STAR) {
-                if (rhs_str || (*out_type != VAR_INT && *out_type != VAR_BOOL)) {
+                if (*out_type == VAR_ARRAY || rhs_type == VAR_ARRAY) {
+                    perform_matrix_vector_mul(
+                        *out_arr ? *out_arr : current_reply.array_val, *out_type, acc,
+                        rhs_arr ? rhs_arr : current_reply.array_val, rhs_type, rhs_val,
+                        &acc, out_type, out_arr
+                    );
+                    if (*out_type == VAR_ARRAY && out_arr && *out_arr) {
+                        current_reply.array_val = *out_arr;
+                        if (*out_str) { untrack_alloc(*out_str); free(*out_str); }
+                        *out_str = array_to_string(*out_arr);
+                    } else if (*out_type == VAR_INT) {
+                        if (*out_str) { untrack_alloc(*out_str); free(*out_str); *out_str = NULL; }
+                    }
+                } else if (rhs_str || (*out_type != VAR_INT && *out_type != VAR_BOOL)) {
                     throw_error("InvalidOperandError", "Invalid operands for operator '*' on line %d", current_executing_line);
+                } else {
+                    acc *= rhs_val;
+                    *out_type = VAR_INT;
                 }
-                acc *= rhs_val;
-                *out_type = VAR_INT;
             } else if (op_type == TOKEN_SLASH) {
                 if (rhs_str || (*out_type != VAR_INT && *out_type != VAR_BOOL)) {
                     throw_error("InvalidOperandError", "Invalid operands for operator '/' on line %d", current_executing_line);
@@ -4707,7 +5041,18 @@ static int evaluate_arithmetic_val(const char **cursor, char **out_str, int *out
             int rhs_val = evaluate_multiplicative_val(cursor, &rhs_str, &rhs_type, &rhs_arr, &rhs_ent);
 
             if (op_type == TOKEN_PLUS) {
-                if (*out_str != NULL && rhs_str != NULL) {
+                if ((*out_type == VAR_ARRAY || rhs_type == VAR_ARRAY) &&
+                    *out_type != VAR_STRING && rhs_type != VAR_STRING) {
+                    Array *res = perform_matrix_vector_add_sub(0,
+                        *out_arr ? *out_arr : current_reply.array_val, *out_type, acc,
+                        rhs_arr ? rhs_arr : current_reply.array_val, rhs_type, rhs_val);
+                    *out_type = VAR_ARRAY;
+                    if (out_arr) *out_arr = res;
+                    current_reply.array_val = res;
+                    if (*out_str) { untrack_alloc(*out_str); free(*out_str); }
+                    *out_str = array_to_string(res);
+                    acc = 0;
+                } else if (*out_str != NULL && rhs_str != NULL) {
                     size_t len1 = strlen(*out_str);
                     size_t len2 = strlen(rhs_str);
                     char *new_str = malloc(len1 + len2 + 1);
@@ -4756,11 +5101,23 @@ static int evaluate_arithmetic_val(const char **cursor, char **out_str, int *out
                     *out_type = VAR_INT;
                 }
             } else if (op_type == TOKEN_MINUS) {
-                if (rhs_str || (*out_type != VAR_INT && *out_type != VAR_BOOL)) {
+                if ((*out_type == VAR_ARRAY || rhs_type == VAR_ARRAY) &&
+                    *out_type != VAR_STRING && rhs_type != VAR_STRING) {
+                    Array *res = perform_matrix_vector_add_sub(1,
+                        *out_arr ? *out_arr : current_reply.array_val, *out_type, acc,
+                        rhs_arr ? rhs_arr : current_reply.array_val, rhs_type, rhs_val);
+                    *out_type = VAR_ARRAY;
+                    if (out_arr) *out_arr = res;
+                    current_reply.array_val = res;
+                    if (*out_str) { untrack_alloc(*out_str); free(*out_str); }
+                    *out_str = array_to_string(res);
+                    acc = 0;
+                } else if (rhs_str || (*out_type != VAR_INT && *out_type != VAR_BOOL)) {
                     throw_error("InvalidOperandError", "Invalid operands for operator '-' on line %d", current_executing_line);
+                } else {
+                    acc -= rhs_val;
+                    *out_type = VAR_INT;
                 }
-                acc -= rhs_val;
-                *out_type = VAR_INT;
             }
             if (rhs_str) { untrack_alloc(rhs_str); free(rhs_str); }
         } else {

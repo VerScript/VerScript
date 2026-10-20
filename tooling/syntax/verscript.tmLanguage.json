@@ -202,7 +202,7 @@
       "patterns": [
         {
           "name": "support.type.exception.verscript",
-          "match": "\\b(MemoryAllocationError|UndefinedVariableError|InvalidOperandError|DivisionByZeroError|IndentationError|LoopIterationError|LoopLimitError|LoopDirectionError|LoopStepError|ScopeViolationError|SyntaxError|RuntimeError|InvalidErrorNameError|SystemError|VisibilityError|ImmutableError|IndexOutOfBoundsError|EntityError|FileError|DomainError|AssertError|DataTypeError|UnassignedVariableError|AsyncError|ChannelError|MatchError|AssertionError)\\b"
+          "match": "\\b(MemoryAllocationError|UndefinedVariableError|InvalidOperandError|DivisionByZeroError|IndentationError|LoopIterationError|LoopLimitError|LoopDirectionError|LoopStepError|ScopeViolationError|SyntaxError|RuntimeError|InvalidErrorNameError|SystemError|VisibilityError|ImmutableError|IndexOutOfBoundsError|EntityError|FileError|DomainError|AssertError|DataTypeError|UnassignedVariableError|AsyncError|ChannelError|MatchError|AssertionError|OperationError)\\b"
         }
       ]
     },
@@ -210,7 +210,7 @@
       "patterns": [
         {
           "name": "support.class.library.verscript",
-          "match": "\\b(Arrays|Assert|Benchmark|Color|Console|Crypto|Env|Fs|Http|Json|Log|Math|Matrix|Mock|Path|Regex|Stats|Strings|Time|Validate)\\b"
+          "match": "\\b(Arrays|Assert|Benchmark|Color|Console|Crypto|Env|Fs|Http|Json|Log|Math|Matrix|Mock|Path|Regex|Stats|Strings|Time|Validate|Vector)\\b"
         }
       ]
     },
