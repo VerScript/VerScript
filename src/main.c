@@ -262,8 +262,72 @@ int get_attribute_str(const char *full_text, const char *key, char *out_val, int
     return 0;
 }
 
+#ifdef _WIN32
+typedef void* HANDLE;
+typedef unsigned long DWORD;
+typedef int BOOL;
+#define STD_OUTPUT_HANDLE ((DWORD)-11)
+#define ENABLE_VIRTUAL_TERMINAL_PROCESSING 0x0004
+#define GENERIC_READ 0x80000000
+#define GENERIC_WRITE 0x40000000
+#define FILE_SHARE_READ 1
+#define FILE_SHARE_WRITE 2
+#define OPEN_EXISTING 3
+
+__declspec(dllimport) HANDLE __stdcall GetStdHandle(DWORD nStdHandle);
+__declspec(dllimport) BOOL __stdcall GetConsoleMode(HANDLE hConsoleHandle, DWORD *lpMode);
+__declspec(dllimport) BOOL __stdcall SetConsoleMode(HANDLE hConsoleHandle, DWORD dwMode);
+__declspec(dllimport) HANDLE __stdcall CreateFileA(const char*, DWORD, DWORD, void*, DWORD, DWORD, void*);
+__declspec(dllimport) BOOL __stdcall CloseHandle(HANDLE);
+
+static int ansi_colors_enabled = 0;
+
+void init_terminal_colors(void) {
+    if (getenv("NO_COLOR") != NULL) {
+        ansi_colors_enabled = 0;
+        return;
+    }
+
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    DWORD mode = 0;
+    if (hOut != (HANDLE)-1 && hOut != NULL && GetConsoleMode(hOut, &mode)) {
+        if (SetConsoleMode(hOut, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING)) {
+            ansi_colors_enabled = 1;
+            return;
+        }
+    }
+
+    // Try CONOUT$ handle for Windows console buffers
+    HANDLE hCon = CreateFileA("CONOUT$", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
+    if (hCon != (HANDLE)-1 && hCon != NULL) {
+        mode = 0;
+        if (GetConsoleMode(hCon, &mode)) {
+            if (SetConsoleMode(hCon, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING)) {
+                ansi_colors_enabled = 1;
+                CloseHandle(hCon);
+                return;
+            }
+        }
+        CloseHandle(hCon);
+    }
+
+    if (getenv("WT_SESSION") || getenv("TERM")) {
+        ansi_colors_enabled = 1;
+        return;
+    }
+
+    ansi_colors_enabled = 0;
+}
+#else
+static int ansi_colors_enabled = 1;
+void init_terminal_colors(void) {
+    if (getenv("NO_COLOR") != NULL) ansi_colors_enabled = 0;
+    else ansi_colors_enabled = 1;
+}
+#endif
+
 void apply_color(const char *col) {
-    if (!col || col[0] == '\0') return;
+    if (!ansi_colors_enabled || !col || col[0] == '\0') return;
     if (strcmp(col, "green") == 0) printf("\033[32m");
     else if (strcmp(col, "red") == 0) printf("\033[31m");
     else if (strcmp(col, "yellow") == 0) printf("\033[33m");
@@ -658,7 +722,11 @@ void throw_error(const char *name, const char *fmt, ...) {
     if (jmp_stack_ptr > 0) {
         longjmp(jmp_env_stack[jmp_stack_ptr - 1], 1);
     } else if (in_repl_mode) {
-        printf("\x1b[1;31mERROR: %s: %s\x1b[0m\n", current_error_name, current_error_msg);
+        if (ansi_colors_enabled) {
+            printf("\x1b[1;31mERROR: %s: %s\x1b[0m\n", current_error_name, current_error_msg);
+        } else {
+            printf("ERROR: %s: %s\n", current_error_name, current_error_msg);
+        }
         fflush(stdout);
         longjmp(repl_jmp_env, 1);
     } else {
@@ -5905,7 +5973,7 @@ void execute_line(const char *text, int line_num) {
             } else {
                 printf("%d", val);
             }
-            if (col[0] != '\0') printf("\033[0m");
+            if (col[0] != '\0' && ansi_colors_enabled) printf("\033[0m");
             if (newline) printf("\n");
         }
         else if (t.type == TOKEN_PROMPT) {
@@ -8664,7 +8732,7 @@ void execute_block(int start, int end) {
                     if (lines[k].text[0] != '\0' && lines[k].text[0] != '!') num_lines++;
                 }
                 printf("[Inject:%s] Evaluated %d code line(s) cleanly.\n", lang, num_lines);
-                if (col[0] != '\0') printf("\033[0m");
+                if (col[0] != '\0' && ansi_colors_enabled) printf("\033[0m");
             }
 
             i = block_end + 1;
@@ -8955,8 +9023,13 @@ void init_math_constants(void) {
 void start_repl(void) {
     in_repl_mode = 1;
     init_math_constants();
-    printf("\x1b[1;36mVerScript 1.2.0 (Interactive Shell)\x1b[0m\n");
-    printf("Type \x1b[33mexit\x1b[0m to quit, \x1b[33mhelp\x1b[0m for cheatsheet, \x1b[33mvars\x1b[0m to inspect variables.\n\n");
+    if (ansi_colors_enabled) {
+        printf("\x1b[1;36mVerScript 1.2.0 (Interactive Shell)\x1b[0m\n");
+        printf("Type \x1b[33mexit\x1b[0m to quit, \x1b[33mhelp\x1b[0m for cheatsheet, \x1b[33mvars\x1b[0m to inspect variables.\n\n");
+    } else {
+        printf("VerScript 1.2.0 (Interactive Shell)\n");
+        printf("Type exit to quit, help for cheatsheet, vars to inspect variables.\n\n");
+    }
 
     char line_buf[4096];
     char block_buf[65536];
@@ -8972,9 +9045,11 @@ void start_repl(void) {
         }
 
         if (!in_multiline) {
-            printf("\x1b[1;32m>>> \x1b[0m");
+            if (ansi_colors_enabled) printf("\x1b[1;32m>>> \x1b[0m");
+            else printf(">>> ");
         } else {
-            printf("\x1b[1;33m... \x1b[0m");
+            if (ansi_colors_enabled) printf("\x1b[1;33m... \x1b[0m");
+            else printf("... ");
         }
         fflush(stdout);
 
@@ -8986,6 +9061,10 @@ void start_repl(void) {
         line_buf[strcspn(line_buf, "\r\n")] = '\0';
         char *trimmed = line_buf;
         while (*trimmed == ' ' || *trimmed == '\t') trimmed++;
+        int tlen = strlen(trimmed);
+        while (tlen > 0 && (trimmed[tlen - 1] == ' ' || trimmed[tlen - 1] == '\t' || trimmed[tlen - 1] == '\r' || trimmed[tlen - 1] == '\n')) {
+            trimmed[--tlen] = '\0';
+        }
 
         if (!in_multiline) {
             if (*trimmed == '\0') continue;
@@ -9001,29 +9080,41 @@ void start_repl(void) {
 #ifdef _WIN32
                 system("cls");
 #else
-                printf("\x1b[2J\x1b[H");
+                if (ansi_colors_enabled) printf("\x1b[2J\x1b[H");
 #endif
                 continue;
             }
             if (strcmp(trimmed, "vars") == 0) {
-                printf("\x1b[1;34m--- Variables in Memory (%d) ---\x1b[0m\n", var_count);
+                if (ansi_colors_enabled) {
+                    printf("\x1b[1;34m--- Variables in Memory (%d) ---\x1b[0m\n", var_count);
+                } else {
+                    printf("--- Variables in Memory (%d) ---\n", var_count);
+                }
                 for (int i = 0; i < var_count; i++) {
                     if (symtable[i].name && symtable[i].name[0] != '\0' && !symtable[i].is_deleted) {
                         if (symtable[i].type == VAR_INT) {
-                            printf("  \x1b[36m%s\x1b[0m (num): %d\n", symtable[i].name, symtable[i].int_val);
+                            if (ansi_colors_enabled) printf("  \x1b[36m%s\x1b[0m (num): %d\n", symtable[i].name, symtable[i].int_val);
+                            else printf("  %s (num): %d\n", symtable[i].name, symtable[i].int_val);
                         } else if (symtable[i].type == VAR_STRING && symtable[i].string_val) {
-                            printf("  \x1b[36m%s\x1b[0m (str): \"%s\"\n", symtable[i].name, symtable[i].string_val);
+                            if (ansi_colors_enabled) printf("  \x1b[36m%s\x1b[0m (str): \"%s\"\n", symtable[i].name, symtable[i].string_val);
+                            else printf("  %s (str): \"%s\"\n", symtable[i].name, symtable[i].string_val);
                         } else if (symtable[i].type == VAR_ARRAY) {
-                            printf("  \x1b[36m%s\x1b[0m (arr): [array length %d]\n", symtable[i].name, symtable[i].array_val ? symtable[i].array_val->count : 0);
+                            if (ansi_colors_enabled) printf("  \x1b[36m%s\x1b[0m (arr): [array length %d]\n", symtable[i].name, symtable[i].array_val ? symtable[i].array_val->count : 0);
+                            else printf("  %s (arr): [array length %d]\n", symtable[i].name, symtable[i].array_val ? symtable[i].array_val->count : 0);
                         } else {
-                            printf("  \x1b[36m%s\x1b[0m (type: %d)\n", symtable[i].name, symtable[i].type);
+                            if (ansi_colors_enabled) printf("  \x1b[36m%s\x1b[0m (type: %d)\n", symtable[i].name, symtable[i].type);
+                            else printf("  %s (type: %d)\n", symtable[i].name, symtable[i].type);
                         }
                     }
                 }
                 continue;
             }
             if (strcmp(trimmed, "help") == 0) {
-                printf("\x1b[1;35m--- VerScript Interactive Shell Cheatsheet ---\x1b[0m\n");
+                if (ansi_colors_enabled) {
+                    printf("\x1b[1;35m--- VerScript Interactive Shell Cheatsheet ---\x1b[0m\n");
+                } else {
+                    printf("--- VerScript Interactive Shell Cheatsheet ---\n");
+                }
                 printf("  • Expressions: Type any expression (e.g. 5 + 3, Matrix.identity 2) to evaluate and print.\n");
                 printf("  • Variables:   set x: 42 or str name: \"Explorer\"\n");
                 printf("  • Output:      display \"Hello \" + name ?color=cyan\n");
@@ -9103,6 +9194,7 @@ void start_repl(void) {
 }
 
 int main(int argc, char *argv[]) {
+    init_terminal_colors();
     set_exec_dir(argv[0]);
 
     if (argc < 2 || strcmp(argv[1], "-i") == 0 || strcmp(argv[1], "--interactive") == 0) {
