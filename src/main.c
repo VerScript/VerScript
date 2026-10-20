@@ -526,6 +526,9 @@ int error_mode = ERR_MODE_NORMAL;
 jmp_buf suppress_jmp_env;
 int suppress_jmp_active = 0;
 
+int in_repl_mode = 0;
+jmp_buf repl_jmp_env;
+
 char *source_buffer = NULL;
 
 typedef struct {
@@ -654,6 +657,10 @@ void throw_error(const char *name, const char *fmt, ...) {
 
     if (jmp_stack_ptr > 0) {
         longjmp(jmp_env_stack[jmp_stack_ptr - 1], 1);
+    } else if (in_repl_mode) {
+        printf("\x1b[1;31mERROR: %s: %s\x1b[0m\n", current_error_name, current_error_msg);
+        fflush(stdout);
+        longjmp(repl_jmp_env, 1);
     } else {
         free_all_tracked();
         printf("ERROR: %s: %s\n", current_error_name, current_error_msg);
@@ -8930,13 +8937,174 @@ void init_math_constants(void) {
     v = set_var("infinity"); v->type = VAR_INT; v->int_val = 2147483647;
 }
 
-int main(int argc, char *argv[]) {
-    if (argc < 2) {
-        printf("Usage: %s <filename>\n", argv[0]);
-        return 1;
+void start_repl(void) {
+    in_repl_mode = 1;
+    init_math_constants();
+    printf("\x1b[1;36mVerScript 1.2.0 (Interactive Shell)\x1b[0m\n");
+    printf("Type \x1b[33mexit\x1b[0m to quit, \x1b[33mhelp\x1b[0m for cheatsheet, \x1b[33mvars\x1b[0m to inspect variables.\n\n");
+
+    char line_buf[4096];
+    char block_buf[65536];
+    block_buf[0] = '\0';
+    int in_multiline = 0;
+
+    while (1) {
+        if (setjmp(repl_jmp_env) != 0) {
+            block_buf[0] = '\0';
+            in_multiline = 0;
+            call_stack_ptr = 0;
+            current_scope_depth = 0;
+        }
+
+        if (!in_multiline) {
+            printf("\x1b[1;32m>>> \x1b[0m");
+        } else {
+            printf("\x1b[1;33m... \x1b[0m");
+        }
+        fflush(stdout);
+
+        if (!fgets(line_buf, sizeof(line_buf), stdin)) {
+            printf("\nExiting VerScript.\n");
+            break;
+        }
+
+        line_buf[strcspn(line_buf, "\r\n")] = '\0';
+        char *trimmed = line_buf;
+        while (*trimmed == ' ' || *trimmed == '\t') trimmed++;
+
+        if (!in_multiline) {
+            if (*trimmed == '\0') continue;
+
+            if (strcmp(trimmed, "exit") == 0 || strcmp(trimmed, "quit") == 0 || strcmp(trimmed, "exit()") == 0) {
+                printf("Goodbye!\n");
+                break;
+            }
+            if (strcmp(trimmed, "clear") == 0 || strcmp(trimmed, "cls") == 0) {
+#ifdef _WIN32
+                system("cls");
+#else
+                printf("\x1b[2J\x1b[H");
+#endif
+                continue;
+            }
+            if (strcmp(trimmed, "vars") == 0) {
+                printf("\x1b[1;34m--- Variables in Memory (%d) ---\x1b[0m\n", var_count);
+                for (int i = 0; i < var_count; i++) {
+                    if (symtable[i].name && symtable[i].name[0] != '\0' && !symtable[i].is_deleted) {
+                        if (symtable[i].type == VAR_INT) {
+                            printf("  \x1b[36m%s\x1b[0m (num): %d\n", symtable[i].name, symtable[i].int_val);
+                        } else if (symtable[i].type == VAR_STRING && symtable[i].string_val) {
+                            printf("  \x1b[36m%s\x1b[0m (str): \"%s\"\n", symtable[i].name, symtable[i].string_val);
+                        } else if (symtable[i].type == VAR_ARRAY) {
+                            printf("  \x1b[36m%s\x1b[0m (arr): [array length %d]\n", symtable[i].name, symtable[i].array_val ? symtable[i].array_val->count : 0);
+                        } else {
+                            printf("  \x1b[36m%s\x1b[0m (type: %d)\n", symtable[i].name, symtable[i].type);
+                        }
+                    }
+                }
+                continue;
+            }
+            if (strcmp(trimmed, "help") == 0) {
+                printf("\x1b[1;35m--- VerScript Interactive Shell Cheatsheet ---\x1b[0m\n");
+                printf("  • Expressions: Type any expression (e.g. 5 + 3, Matrix.identity 2) to evaluate and print.\n");
+                printf("  • Variables:   set x: 42 or str name: \"Explorer\"\n");
+                printf("  • Output:      display \"Hello \" + name ?color=cyan\n");
+                printf("  • Input:       prompt age ?default=25\n");
+                printf("  • Blocks:      loop 3:, iterate i from 1 to 5:, if ... then:, def func ...:\n");
+                printf("  • Libraries:   load Matrix, load Math, load Stats, load Crypto, load Fs\n");
+                printf("  • Commands:    vars (list variables), clear (clear screen), exit (quit shell)\n\n");
+                continue;
+            }
+        }
+
+        int len = strlen(trimmed);
+        int is_block_starter = 0;
+        if (len > 0 && trimmed[len - 1] == ':') is_block_starter = 1;
+        if (strncmp(trimmed, "loop ", 5) == 0 || strncmp(trimmed, "iterate ", 8) == 0 ||
+            strncmp(trimmed, "if ", 3) == 0 || strncmp(trimmed, "do", 2) == 0 ||
+            strncmp(trimmed, "while ", 6) == 0 || strncmp(trimmed, "until ", 6) == 0 ||
+            strncmp(trimmed, "def func", 8) == 0 || strncmp(trimmed, "func ", 5) == 0 ||
+            strncmp(trimmed, "class ", 6) == 0 || strncmp(trimmed, "struct ", 7) == 0 ||
+            strncmp(trimmed, "header ", 7) == 0 || strncmp(trimmed, "enum ", 5) == 0) {
+            is_block_starter = 1;
+        }
+
+        if (in_multiline) {
+            if (*trimmed == '\0') {
+                in_multiline = 0;
+            } else {
+                strncat(block_buf, line_buf, sizeof(block_buf) - strlen(block_buf) - 2);
+                strcat(block_buf, "\n");
+                continue;
+            }
+        } else if (is_block_starter) {
+            in_multiline = 1;
+            block_buf[0] = '\0';
+            strncat(block_buf, line_buf, sizeof(block_buf) - strlen(block_buf) - 2);
+            strcat(block_buf, "\n");
+            continue;
+        } else {
+            block_buf[0] = '\0';
+            int is_statement = 0;
+            const char *stmt_keywords[] = {
+                "set ", "display ", "prompt ", "loop ", "iterate ", "if ", "while ", "until ",
+                "do", "unless", "throw ", "inject ", "alias ", "header ", "pragma ", "include ",
+                "export ", "struct ", "enum ", "config ", "DataType ", "load ", "import ",
+                "lib ", "library ", "class ", "def ", "func ", "method ", "async ", "sync ",
+                "guard ", "chan ", "send ", "recv ", "match ", "on ", "when ", "emit ", "del ",
+                "!", "ForceErrors", "CriticalErrors", "SuppressErrors", NULL
+            };
+            for (int k = 0; stmt_keywords[k] != NULL; k++) {
+                if (strncmp(trimmed, stmt_keywords[k], strlen(stmt_keywords[k])) == 0) {
+                    is_statement = 1;
+                    break;
+                }
+            }
+
+            if (!is_statement) {
+                snprintf(block_buf, sizeof(block_buf), "display %s\n", trimmed);
+            } else {
+                snprintf(block_buf, sizeof(block_buf), "%s\n", line_buf);
+            }
+        }
+
+        if (block_buf[0] != '\0') {
+            int start_idx = line_count;
+            parse_lines(block_buf);
+            if (line_count > start_idx) {
+                current_stack_id = ++stack_counter;
+                execute_block(start_idx, line_count - 1);
+                run_event_loop();
+            }
+            block_buf[0] = '\0';
+        }
     }
 
+    in_repl_mode = 0;
+    free_globals();
+}
+
+int main(int argc, char *argv[]) {
     set_exec_dir(argv[0]);
+
+    if (argc < 2 || strcmp(argv[1], "-i") == 0 || strcmp(argv[1], "--interactive") == 0) {
+        start_repl();
+        return 0;
+    }
+
+    if (strcmp(argv[1], "-v") == 0 || strcmp(argv[1], "--version") == 0) {
+        printf("VerScript 1.2.0 (x86_64-windows)\n");
+        return 0;
+    }
+    if (strcmp(argv[1], "-h") == 0 || strcmp(argv[1], "--help") == 0) {
+        printf("Usage:\n");
+        printf("  verscript              Start interactive REPL shell\n");
+        printf("  verscript <file.vrs>   Run VerScript program\n");
+        printf("  verscript -i           Start interactive REPL shell\n");
+        printf("  verscript -v           Display version information\n");
+        printf("  verscript -h           Display this help screen\n");
+        return 0;
+    }
 
     FILE *file = fopen(argv[1], "rb");
     if (!file) {
