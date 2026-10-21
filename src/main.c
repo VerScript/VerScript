@@ -1529,6 +1529,7 @@ Entity* create_async_handle(int val, const char *str, int type, Array *arr, Enti
     if (!ent) throw_error("MemoryAllocationError", "Memory allocation failed for AsyncHandle");
     track_alloc((char*)ent);
     strncpy(ent->class_name, "AsyncHandle", sizeof(ent->class_name) - 1);
+    ent->class_name[sizeof(ent->class_name) - 1] = '\0';
 
     ent->dynamic_vars = calloc(2, sizeof(Variable));
     if (!ent->dynamic_vars) throw_error("MemoryAllocationError", "Memory allocation failed for AsyncHandle vars");
@@ -6300,6 +6301,7 @@ void execute_line(const char *text, int line_num) {
             Token first_part = getNextToken(&cursor);
             if (first_part.type == TOKEN_IDENTIFIER && first_part.value) {
                 strncpy(mod_path, first_part.value, sizeof(mod_path) - 1);
+                mod_path[sizeof(mod_path) - 1] = '\0';
                 Token next_p = peekToken(&cursor);
                 char last_part[64] = "";
                 strncpy(last_part, first_part.value, 63);
@@ -7270,6 +7272,7 @@ void execute_block(int start, int end) {
                 char inline_items[512] = "";
                 if (*cc != '\0') {
                     strncpy(inline_items, cc, sizeof(inline_items) - 1);
+                    inline_items[sizeof(inline_items) - 1] = '\0';
                     char *end_kw = strstr(inline_items, " end");
                     if (end_kw) *end_kw = '\0';
                 }
@@ -7391,6 +7394,7 @@ void execute_block(int start, int end) {
                 char inline_fields[512] = "";
                 if (*cc != '\0') {
                     strncpy(inline_fields, cc, sizeof(inline_fields) - 1);
+                    inline_fields[sizeof(inline_fields) - 1] = '\0';
                     char *end_kw = strstr(inline_fields, " end");
                     if (end_kw) *end_kw = '\0';
                 }
