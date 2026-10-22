@@ -80,6 +80,8 @@ typedef struct ClassDef {
     int static_end_line;
     int dynamic_start_line;
     int dynamic_end_line;
+    int construct_start_line;
+    int construct_end_line;
     MetadataStore meta;
 } ClassDef;
 
@@ -89,6 +91,11 @@ int class_count = 0;
 
 typedef struct LibraryDef {
     char name[64];
+    char params[16][64];
+    char param_types[16][64];
+    int param_count;
+    int construct_start_line;
+    int construct_end_line;
     Variable *const_vars;
     int const_count;
     int const_capacity;
@@ -1717,6 +1724,7 @@ void load_library(const char *target, int line_num);
 void load_library_source(const char *source, const char *origin_name, int line_num);
 
 Entity* instantiate_entity(ClassDef *cd, const char **cursor, int line_num);
+Entity* instantiate_library_entity(LibraryDef *lib, const char **cursor, int line_num);
 int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Array **out_arr, Entity **out_ent);
 int evaluate_expression_val(const char **cursor, char **out_str, int *out_type, Array **out_arr, Entity **out_ent);
 int dispatch_array_method(Array *arr, const char *method, const char **cursor, char **out_str, int *out_type, Array **out_arr, Entity **out_ent, int line_num);
@@ -1943,7 +1951,7 @@ void parse_parameter_list(const char **cursor, char params[16][64], char param_t
     *param_count = 0;
     while (1) {
         Token ptok = getNextToken(cursor);
-        if (ptok.type == TOKEN_EOF || ptok.type == TOKEN_RPAREN) {
+        if (ptok.type == TOKEN_EOF || ptok.type == TOKEN_RPAREN || ptok.type == TOKEN_COLON) {
             freeToken(&ptok);
             break;
         }
@@ -2925,7 +2933,196 @@ Entity* instantiate_entity(ClassDef *cd, const char **cursor, int line_num) {
         in_entity_instantiation = 0;
     }
 
+    // Auto-invoke construct block or method
+    if (cd->construct_start_line <= cd->construct_end_line) {
+        execute_block(cd->construct_start_line, cd->construct_end_line);
+    } else {
+        Routine *ctor = NULL;
+        for (int m = 0; m < ent->method_count; m++) {
+            if (strcmp(ent->methods[m].name, "construct") == 0 || strcmp(ent->methods[m].name, "constructor") == 0) {
+                ctor = &ent->methods[m];
+                break;
+            }
+        }
+        if (ctor) {
+            const char *empty_c = "";
+            call_routine(ctor, &empty_c, line_num);
+        }
+    }
+
     current_entity = saved_ent;
+    pop_scope(prev_scope);
+    current_scope_depth = prev_scope;
+
+    return ent;
+}
+
+Entity* instantiate_library_entity(LibraryDef *lib, const char **cursor, int line_num) {
+    (void)line_num;
+    Entity *ent = calloc(1, sizeof(Entity));
+    if (!ent) throw_error("MemoryAllocationError", "Memory allocation failed for library entity");
+    track_alloc((char*)ent);
+    strncpy(ent->class_name, lib->name, sizeof(ent->class_name) - 1);
+    ent->class_name[sizeof(ent->class_name) - 1] = '\0';
+
+    typedef struct {
+        int int_val;
+        char *str_val;
+        int type;
+        Array *arr_val;
+        Entity *ent_val;
+    } EvalParam;
+
+    EvalParam evaluated_args[16];
+    for (int p = 0; p < lib->param_count; p++) {
+        char *arg_str = NULL;
+        int arg_type = VAR_INT;
+        int arg_int = 0;
+        Array *arg_arr = NULL;
+        Entity *arg_ent = NULL;
+        evaluate_argument(cursor, &arg_str, &arg_type, &arg_int, &arg_arr, &arg_ent);
+        evaluated_args[p].int_val = arg_int;
+        evaluated_args[p].str_val = arg_str;
+        evaluated_args[p].type = arg_type;
+        evaluated_args[p].arr_val = arg_arr;
+        evaluated_args[p].ent_val = arg_ent;
+        if (p < lib->param_count - 1) {
+            Token comma = peekToken(cursor);
+            if (comma.type == TOKEN_COMMA) {
+                freeToken(&comma);
+                Token c = getNextToken(cursor); freeToken(&c);
+            } else {
+                freeToken(&comma);
+            }
+        }
+    }
+
+    int prev_scope = current_scope_depth;
+    current_scope_depth++;
+
+    for (int p = 0; p < lib->param_count; p++) {
+        if (lib->param_types[p][0] != '\0') {
+            validate_value_type(lib->param_types[p], evaluated_args[p].int_val, evaluated_args[p].str_val, evaluated_args[p].type, evaluated_args[p].arr_val, evaluated_args[p].ent_val, line_num);
+        }
+        if (var_count >= var_capacity) {
+            int new_capacity = (var_capacity == 0) ? 100 : var_capacity * 2;
+            Variable *tmp = realloc(symtable, new_capacity * sizeof(Variable));
+            if (!tmp) throw_error("MemoryAllocationError", "Memory allocation failed");
+            symtable = tmp;
+            var_capacity = new_capacity;
+        }
+        Variable *param_var = &symtable[var_count++];
+        memset(param_var, 0, sizeof(Variable));
+        param_var->name = strdup(lib->params[p]);
+        param_var->scope_level = current_scope_depth;
+        param_var->type = evaluated_args[p].type;
+        param_var->int_val = evaluated_args[p].int_val;
+        if (lib->param_types[p][0] != '\0') {
+            strncpy(param_var->declared_type, lib->param_types[p], 63);
+            param_var->declared_type[63] = '\0';
+        }
+        if (evaluated_args[p].str_val) {
+            untrack_alloc(evaluated_args[p].str_val);
+            param_var->string_val = evaluated_args[p].str_val;
+        } else {
+            param_var->string_val = NULL;
+        }
+        param_var->array_val = evaluated_args[p].arr_val;
+        param_var->entity_val = evaluated_args[p].ent_val;
+
+        // Persist parameter into entity dynamic variables
+        if (ent->dynamic_count >= ent->dynamic_capacity) {
+            int new_cap = (ent->dynamic_capacity == 0) ? 8 : ent->dynamic_capacity * 2;
+            if (ent->dynamic_vars) untrack_alloc((char*)ent->dynamic_vars);
+            Variable *tmp = realloc(ent->dynamic_vars, new_cap * sizeof(Variable));
+            if (!tmp) throw_error("MemoryAllocationError", "Memory allocation failed");
+            ent->dynamic_vars = tmp;
+            track_alloc((char*)ent->dynamic_vars);
+            ent->dynamic_capacity = new_cap;
+        }
+        Variable *edv = &ent->dynamic_vars[ent->dynamic_count++];
+        memset(edv, 0, sizeof(Variable));
+        edv->name = strdup(lib->params[p]);
+        track_alloc(edv->name);
+        edv->type = evaluated_args[p].type;
+        edv->int_val = evaluated_args[p].int_val;
+        if (evaluated_args[p].str_val) {
+            edv->string_val = strdup(evaluated_args[p].str_val);
+            track_alloc(edv->string_val);
+        } else {
+            edv->string_val = NULL;
+        }
+        edv->array_val = evaluated_args[p].arr_val;
+        edv->entity_val = evaluated_args[p].ent_val;
+        if (lib->param_types[p][0] != '\0') {
+            strncpy(edv->declared_type, lib->param_types[p], 63);
+            edv->declared_type[63] = '\0';
+        }
+    }
+
+    // Bind all routines from library into ent->methods
+    if (lib->routine_count > 0) {
+        ent->methods = calloc(lib->routine_count, sizeof(Routine));
+        track_alloc((char*)ent->methods);
+        ent->method_capacity = lib->routine_count;
+        ent->method_count = lib->routine_count;
+        for (int k = 0; k < lib->routine_count; k++) {
+            ent->methods[k] = lib->routines[k];
+            ent->methods[k].bound_entity = ent;
+        }
+    }
+
+    // Copy dynamic vars
+    for (int k = 0; k < lib->dynamic_count; k++) {
+        if (ent->dynamic_count >= ent->dynamic_capacity) {
+            int new_cap = (ent->dynamic_capacity == 0) ? 8 : ent->dynamic_capacity * 2;
+            if (ent->dynamic_vars) untrack_alloc((char*)ent->dynamic_vars);
+            Variable *tmp = realloc(ent->dynamic_vars, new_cap * sizeof(Variable));
+            if (!tmp) throw_error("MemoryAllocationError", "Memory allocation failed");
+            ent->dynamic_vars = tmp;
+            track_alloc((char*)ent->dynamic_vars);
+            ent->dynamic_capacity = new_cap;
+        }
+        Variable *edv = &ent->dynamic_vars[ent->dynamic_count++];
+        memset(edv, 0, sizeof(Variable));
+        edv->name = strdup(lib->dynamic_vars[k].name);
+        track_alloc(edv->name);
+        edv->type = lib->dynamic_vars[k].type;
+        edv->int_val = lib->dynamic_vars[k].int_val;
+        if (lib->dynamic_vars[k].string_val) {
+            edv->string_val = strdup(lib->dynamic_vars[k].string_val);
+            track_alloc(edv->string_val);
+        }
+        edv->array_val = lib->dynamic_vars[k].array_val;
+        edv->entity_val = lib->dynamic_vars[k].entity_val;
+    }
+
+    clone_metadata_store(&lib->meta, &ent->meta);
+
+    Entity *saved_ent = current_entity;
+    LibraryDef *saved_lib = current_library;
+    current_entity = ent;
+    current_library = lib;
+
+    // Execute construct block if present
+    if (lib->construct_start_line <= lib->construct_end_line) {
+        execute_block(lib->construct_start_line, lib->construct_end_line);
+    } else {
+        Routine *ctor = NULL;
+        for (int m = 0; m < ent->method_count; m++) {
+            if (strcmp(ent->methods[m].name, "construct") == 0 || strcmp(ent->methods[m].name, "constructor") == 0) {
+                ctor = &ent->methods[m];
+                break;
+            }
+        }
+        if (ctor) {
+            const char *empty_c = "";
+            call_routine(ctor, &empty_c, line_num);
+        }
+    }
+
+    current_entity = saved_ent;
+    current_library = saved_lib;
     pop_scope(prev_scope);
     current_scope_depth = prev_scope;
 
@@ -4050,6 +4247,26 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
             if (rp.type != TOKEN_RPAREN) {
                 freeToken(&rp);
                 throw_error("SyntaxError", "Expected ')' after class instantiation on line %d", current_executing_line);
+            }
+            freeToken(&rp);
+            *out_type = VAR_ENTITY;
+            if (out_ent) *out_ent = ent;
+            current_reply.entity_val = ent;
+            *out_str = entity_to_string(ent);
+            freeToken(&t);
+            return 0;
+        }
+
+        // 1b. Check if library instantiation: LibName(...)
+        LibraryDef *lib_inst = find_library(t.value);
+        if (lib_inst && peek.type == TOKEN_LPAREN && (lib_inst->param_count > 0 || lib_inst->construct_start_line <= lib_inst->construct_end_line || lib_inst->routine_count > 0)) {
+            freeToken(&peek);
+            Token lp = getNextToken(cursor); freeToken(&lp);
+            Entity *ent = instantiate_library_entity(lib_inst, cursor, current_executing_line);
+            Token rp = getNextToken(cursor);
+            if (rp.type != TOKEN_RPAREN) {
+                freeToken(&rp);
+                throw_error("SyntaxError", "Expected ')' after library instantiation on line %d", current_executing_line);
             }
             freeToken(&rp);
             *out_type = VAR_ENTITY;
@@ -7495,9 +7712,11 @@ void execute_block(int start, int end) {
                 if (*cc == '(') {
                     cc++;
                     parse_parameter_list(&cc, cd->params, cd->param_types, &cd->param_count);
+                } else if (*cc != ':' && *cc != '\0') {
+                    parse_parameter_list(&cc, cd->params, cd->param_types, &cd->param_count);
                 }
 
-                int cur_section = 0; // 1 = static, 2 = dynamic
+                int cur_section = 0; // 1 = static, 2 = dynamic, 4 = construct
                 for (int idx = block_start; idx <= block_end; idx++) {
                     Line *ln = &lines[idx];
                     if (ln->text[0] == '\0' || ln->text[0] == '!') continue;
@@ -7509,6 +7728,10 @@ void execute_block(int start, int end) {
                         cur_section = 2;
                         cd->dynamic_start_line = idx + 1;
                         cd->dynamic_end_line = idx;
+                    } else if (strcmp(ln->text, "construct:") == 0 || strncmp(ln->text, "construct:", 10) == 0 || strcmp(ln->text, "construct") == 0) {
+                        cur_section = 4;
+                        cd->construct_start_line = idx + 1;
+                        cd->construct_end_line = idx;
                     } else if (is_meta_block_header(ln->text)) {
                         cur_section = 3;
                         if (strstr(ln->text, "?override") != NULL) {
@@ -7526,8 +7749,28 @@ void execute_block(int start, int end) {
                         idx = m_end;
                         continue;
                     } else {
+                        if (strcmp(ln->text, "construct:") == 0 || strncmp(ln->text, "construct:", 10) == 0 || strcmp(ln->text, "construct") == 0) {
+                            int c_start = idx + 1;
+                            int c_end = idx;
+                            while (c_end + 1 <= block_end) {
+                                Line *next = &lines[c_end + 1];
+                                if (next->text[0] == '\0' || next->text[0] == '!') { c_end++; continue; }
+                                if (next->indent > ln->indent) c_end++;
+                                else break;
+                            }
+                            cd->construct_start_line = c_start;
+                            cd->construct_end_line = c_end;
+                            idx = c_end;
+                            continue;
+                        }
                         if (cur_section == 1) cd->static_end_line = idx;
-                        else if (cur_section == 2) cd->dynamic_end_line = idx;
+                        else if (cur_section == 4) cd->construct_end_line = idx;
+                        else {
+                            if (cd->dynamic_start_line == 1 && cd->dynamic_end_line == 0) {
+                                cd->dynamic_start_line = idx;
+                            }
+                            cd->dynamic_end_line = idx;
+                        }
                     }
                 }
                 init_auto_metadata(&cd->meta, cd->name, "class", "source", cd->param_count);
@@ -7613,8 +7856,15 @@ void execute_block(int start, int end) {
                 if (nlen > 63) nlen = 63;
                 strncpy(lib->name, name_start, nlen);
                 lib->name[nlen] = '\0';
+                while (isspace((unsigned char)*cc)) cc++;
+                if (*cc == '(') {
+                    cc++;
+                    parse_parameter_list(&cc, lib->params, lib->param_types, &lib->param_count);
+                } else if (*cc != ':' && *cc != '\0') {
+                    parse_parameter_list(&cc, lib->params, lib->param_types, &lib->param_count);
+                }
 
-                int cur_sec = 0; // 1 = const/static, 2 = dynamic
+                int cur_sec = 0; // 1 = const/static, 2 = dynamic, 4 = construct
                 LibraryDef *prev_lib_ctx = current_library;
                 current_library = lib;
 
@@ -7626,6 +7876,10 @@ void execute_block(int start, int end) {
                         cur_sec = 1;
                     } else if (strcmp(ln->text, "dynamic:") == 0 || strncmp(ln->text, "dynamic:", 8) == 0) {
                         cur_sec = 2;
+                    } else if (strcmp(ln->text, "construct:") == 0 || strncmp(ln->text, "construct:", 10) == 0 || strcmp(ln->text, "construct") == 0) {
+                        cur_sec = 4;
+                        lib->construct_start_line = idx + 1;
+                        lib->construct_end_line = idx;
                     } else if (is_meta_block_header(ln->text)) {
                         if (strstr(ln->text, "?override") != NULL) {
                             lib->meta.override_all = 1;
@@ -7858,6 +8112,20 @@ void execute_block(int start, int end) {
                         idx = c_end;
                         continue;
                     } else {
+                        if (strcmp(ln->text, "construct:") == 0 || strncmp(ln->text, "construct:", 10) == 0 || strcmp(ln->text, "construct") == 0) {
+                            int c_start = idx + 1;
+                            int c_end = idx;
+                            while (c_end + 1 <= block_end) {
+                                Line *next = &lines[c_end + 1];
+                                if (next->text[0] == '\0' || next->text[0] == '!') { c_end++; continue; }
+                                if (next->indent > ln->indent) c_end++;
+                                else break;
+                            }
+                            lib->construct_start_line = c_start;
+                            lib->construct_end_line = c_end;
+                            idx = c_end;
+                            continue;
+                        }
                         const char *c = ln->text;
                         int is_priv = 0;
                         Token t = peekToken(&c);
@@ -7899,7 +8167,10 @@ void execute_block(int start, int end) {
                             lr->kind = (kind_tok.type == TOKEN_FUNC) ? ROUTINE_FUNC : ROUTINE_METHOD;
                             freeToken(&kind_tok);
                             Token rname = getNextToken(&c);
-                            if (rname.value && rname.value[0] != '\0') {
+                            if (rname.type == TOKEN_CONSTRUCT || (rname.value && strcmp(rname.value, "construct") == 0)) {
+                                strncpy(lr->name, "construct", 63);
+                                lr->name[63] = '\0';
+                            } else if (rname.value && rname.value[0] != '\0') {
                                 strncpy(lr->name, rname.value, 63);
                                 lr->name[63] = '\0';
                             }
@@ -9024,6 +9295,125 @@ void init_math_constants(void) {
     v = set_var("infinity"); v->type = VAR_INT; v->int_val = 2147483647;
 }
 
+void display_terminal_help(const char *topic) {
+    if (!topic || topic[0] == '\0') {
+        printf("\x1b[1;36m====================================================================\x1b[0m\n");
+        printf("\x1b[1;36m       VerScript Ecosystem Help Center & Documentation Index        \x1b[0m\n");
+        printf("\x1b[1;36m====================================================================\x1b[0m\n\n");
+        printf("\x1b[1;33mCommands:\x1b[0m\n");
+        printf("  verscript help <topic>          View comprehensive help for topic\n");
+        printf("  help <topic>                    Shortcut in PS or CMD\n");
+        printf("  verscript update                Check & install latest official release\n\n");
+        printf("\x1b[1;32m1. Built-in Keywords:\x1b[0m\n");
+        printf("  Control Flow : if, then, else, unless, while, until, loop, cycle, repeat, for, match, when\n");
+        printf("  Declarations : set, def, func, method, class, lib, library, construct, struct, enum\n");
+        printf("  Modifiers    : const, static, dynamic, temp, inst, del, public, private, meta, pragma\n");
+        printf("  Async/Event  : event, emit, listen, async, await, defer, reply, return, throw, catch\n");
+        printf("  Input/Output : display, prompt, log, debug, echo\n\n");
+        printf("\x1b[1;35m2. Standard Libraries:\x1b[0m\n");
+        printf("  Math, Matrix, Vector, Stats, String, Array, Json, Fs, Http, Net, Crypto, Time,\n");
+        printf("  Random, Color, Ansi, Sys, Watchdog, Polyserver, Event, Thread, Test\n\n");
+        printf("\x1b[1;34m3. Datatypes & Constraints:\x1b[0m\n");
+        printf("  num, str, bool, arr, entity, any, void, nil, DataType (custom constraint)\n\n");
+        printf("\x1b[1;33m4. Operators & Syntax:\x1b[0m\n");
+        printf("  Arithmetic   : +, -, *, /, %%\n");
+        printf("  Comparison   : ==, !=, <, >, <=, >=\n");
+        printf("  Logical      : &&, ||, !\n");
+        printf("  Navigation   : ?., ??, ::, ., :\n");
+        printf("  Directives   : ?color=..., ?default=..., ?override\n\n");
+        printf("\x1b[1;36m5. Header Contracts (*.h.vrs):\x1b[0m\n");
+        printf("  header, contract, require, ensure, include, inbound, outbound\n\n");
+        printf("\x1b[1;37mExamples:\x1b[0m\n");
+        printf("  verscript help Matrix\n");
+        printf("  verscript help while\n");
+        printf("  verscript help construct\n");
+        printf("  verscript help num\n");
+        printf("  verscript help ?.\n");
+        return;
+    }
+
+    char clean_topic[128] = "";
+    int ct_idx = 0;
+    for (int i = 0; topic[i] && ct_idx < 120; i++) {
+        char ch = topic[i];
+        if (isalnum((unsigned char)ch) || ch == '_' || ch == '-') {
+            clean_topic[ct_idx++] = tolower((unsigned char)ch);
+        } else if (ch == '+') {
+            strcpy(clean_topic + ct_idx, "plus"); ct_idx += 4;
+        } else if (ch == '-') {
+            strcpy(clean_topic + ct_idx, "minus"); ct_idx += 5;
+        } else if (ch == '*') {
+            strcpy(clean_topic + ct_idx, "multiply"); ct_idx += 8;
+        } else if (ch == '/') {
+            strcpy(clean_topic + ct_idx, "divide"); ct_idx += 6;
+        } else if (ch == '%') {
+            strcpy(clean_topic + ct_idx, "modulo"); ct_idx += 6;
+        } else if (ch == '?') {
+            strcpy(clean_topic + ct_idx, "question"); ct_idx += 8;
+        } else if (ch == '.') {
+            strcpy(clean_topic + ct_idx, "dot"); ct_idx += 3;
+        } else if (ch == ':') {
+            strcpy(clean_topic + ct_idx, "colon"); ct_idx += 5;
+        }
+    }
+    clean_topic[ct_idx] = '\0';
+
+    char cand_paths[16][1024];
+    int cand_count = 0;
+
+    const char *appdata = getenv("LOCALAPPDATA");
+    if (appdata) {
+        snprintf(cand_paths[cand_count++], sizeof(cand_paths[0]), "%s/VerScript/help/%s.md", appdata, clean_topic);
+        snprintf(cand_paths[cand_count++], sizeof(cand_paths[0]), "%s/VerScript/help/keywords/%s.md", appdata, clean_topic);
+        snprintf(cand_paths[cand_count++], sizeof(cand_paths[0]), "%s/VerScript/help/libraries/%s.md", appdata, clean_topic);
+        snprintf(cand_paths[cand_count++], sizeof(cand_paths[0]), "%s/VerScript/help/datatypes/%s.md", appdata, clean_topic);
+        snprintf(cand_paths[cand_count++], sizeof(cand_paths[0]), "%s/VerScript/help/operators/%s.md", appdata, clean_topic);
+        snprintf(cand_paths[cand_count++], sizeof(cand_paths[0]), "%s/VerScript/help/headers/%s.md", appdata, clean_topic);
+        snprintf(cand_paths[cand_count++], sizeof(cand_paths[0]), "%s/VerScript/help/errors/%s.md", appdata, clean_topic);
+    }
+    if (exec_dir[0] != '\0') {
+        snprintf(cand_paths[cand_count++], sizeof(cand_paths[0]), "%s/help/%s.md", exec_dir, clean_topic);
+        snprintf(cand_paths[cand_count++], sizeof(cand_paths[0]), "%s/../help_repo_scaffold/docs/keywords/%s.md", exec_dir, clean_topic);
+        snprintf(cand_paths[cand_count++], sizeof(cand_paths[0]), "%s/../help_repo_scaffold/docs/libraries/%s.md", exec_dir, clean_topic);
+        snprintf(cand_paths[cand_count++], sizeof(cand_paths[0]), "%s/../help_repo_scaffold/docs/datatypes/%s.md", exec_dir, clean_topic);
+        snprintf(cand_paths[cand_count++], sizeof(cand_paths[0]), "%s/../help_repo_scaffold/docs/operators/%s.md", exec_dir, clean_topic);
+        snprintf(cand_paths[cand_count++], sizeof(cand_paths[0]), "%s/../help_repo_scaffold/docs/headers/%s.md", exec_dir, clean_topic);
+    }
+
+    FILE *hf = NULL;
+    for (int i = 0; i < cand_count; i++) {
+        hf = fopen(cand_paths[i], "rb");
+        if (hf) break;
+    }
+
+    if (hf) {
+        printf("\x1b[1;36m[VerScript Help: %s]\x1b[0m\n\n", topic);
+        char line[1024];
+        int in_code = 0;
+        while (fgets(line, sizeof(line), hf)) {
+            if (strncmp(line, "```", 3) == 0) {
+                in_code = !in_code;
+                if (in_code) printf("\x1b[38;2;120;120;120m--- Example Code ---\x1b[0m\n");
+                else printf("\x1b[38;2;120;120;120m--------------------\x1b[0m\n");
+                continue;
+            }
+            if (line[0] == '#') {
+                printf("\x1b[1;33m%s\x1b[0m", line);
+            } else if (in_code) {
+                printf("\x1b[1;32m  %s\x1b[0m", line);
+            } else {
+                printf("%s", line);
+            }
+        }
+        fclose(hf);
+        printf("\n\x1b[38;2;100;100;100mRun 'verscript help' to return to index.\x1b[0m\n");
+    } else {
+        printf("\x1b[1;31mNo specific help entry found for '%s'.\x1b[0m\n", topic);
+        printf("Run 'verscript help' to see all available keywords, libraries, and datatypes.\n");
+        printf("Or visit the online documentation: \x1b[4;36mhttps://verscript.github.io/help\x1b[0m\n");
+    }
+}
+
 void start_repl(void) {
     in_repl_mode = 1;
     init_math_constants();
@@ -9113,19 +9503,33 @@ void start_repl(void) {
                 }
                 continue;
             }
-            if (strcmp(trimmed, "help") == 0) {
-                if (ansi_colors_enabled) {
-                    printf("\x1b[1;35m--- VerScript Interactive Shell Cheatsheet ---\x1b[0m\n");
-                } else {
-                    printf("--- VerScript Interactive Shell Cheatsheet ---\n");
+            if (strncmp(trimmed, "verscript help", 14) == 0 || strncmp(trimmed, "help", 4) == 0) {
+                const char *topic = "";
+                if (strncmp(trimmed, "verscript help", 14) == 0) {
+                    topic = trimmed + 14;
+                } else if (strncmp(trimmed, "help", 4) == 0) {
+                    topic = trimmed + 4;
                 }
-                printf("  • Expressions: Type any expression (e.g. 5 + 3, Matrix.identity 2) to evaluate and print.\n");
-                printf("  • Variables:   set x: 42 or str name: \"Explorer\"\n");
-                printf("  • Output:      display \"Hello \" + name ?color=cyan\n");
-                printf("  • Input:       prompt age ?default=25\n");
-                printf("  • Blocks:      loop 3:, iterate i from 1 to 5:, if ... then:, def func ...:\n");
-                printf("  • Libraries:   load Matrix, load Math, load Stats, load Crypto, load Fs\n");
-                printf("  • Commands:    vars (list variables), clear (clear screen), exit (quit shell)\n\n");
+                while (isspace((unsigned char)*topic)) topic++;
+                display_terminal_help(topic);
+                continue;
+            }
+            if (strcmp(trimmed, "verscript update") == 0 || strcmp(trimmed, "update") == 0) {
+                printf("\x1b[1;36m[VerScript Updater]\x1b[0m Checking and applying latest update from GitHub...\n");
+#ifdef _WIN32
+                system("powershell -ExecutionPolicy Bypass -Command \"irm https://raw.githubusercontent.com/VerScript/VerScript/main/install.ps1 | iex\"");
+#else
+                system("curl -fsSL https://raw.githubusercontent.com/VerScript/VerScript/main/install.sh | bash");
+#endif
+                continue;
+            }
+            if (strcmp(trimmed, "verscript -v") == 0 || strcmp(trimmed, "verscript --version") == 0 || strcmp(trimmed, "version") == 0) {
+                printf("VerScript 2.0.0 (x86_64-windows)\n");
+                printf("Release: v2.0.0 (Official Language Release)\n");
+                continue;
+            }
+            if (strcmp(trimmed, "verscript -h") == 0 || strcmp(trimmed, "verscript --help") == 0) {
+                display_terminal_help("");
                 continue;
             }
         }
@@ -9206,7 +9610,7 @@ int main(int argc, char *argv[]) {
         return 0;
     }
 
-    if (strcmp(argv[1], "-v") == 0 || strcmp(argv[1], "--version") == 0) {
+    if (strcmp(argv[1], "-v") == 0 || strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "version") == 0) {
         printf("VerScript 2.0.0 (x86_64-windows)\n");
         printf("Release: v2.0.0 (Official Language Release)\n");
         printf("Run 'verscript update' to check and install updates from GitHub.\n");
@@ -9222,17 +9626,27 @@ int main(int argc, char *argv[]) {
         return ret;
 #endif
     }
-    if (strcmp(argv[1], "-h") == 0 || strcmp(argv[1], "--help") == 0) {
-        printf("Usage:\n");
-        printf("  verscript                        Start interactive REPL shell\n");
-        printf("  verscript <file.vrs>             Run VerScript program\n");
-        printf("  verscript <file.lib.vrs>         Load and test library module\n");
-        printf("  verscript <file.h.vrs>           Validate header contract specification\n");
-        printf("  verscript update                 Check and install latest VerScript update\n");
-        printf("  verscript -i                     Start interactive REPL shell\n");
-        printf("  verscript -v                     Display version information\n");
-        printf("  verscript -h                     Display this help screen\n");
+    if (strcmp(argv[1], "help") == 0 || strcmp(argv[1], "-h") == 0 || strcmp(argv[1], "--help") == 0) {
+        display_terminal_help(argc >= 3 ? argv[2] : "");
         return 0;
+    }
+    if (strcmp(argv[1], "verscript") == 0) {
+        if (argc >= 3) {
+            if (strcmp(argv[2], "update") == 0) {
+                printf("\x1b[1;36m[VerScript Updater]\x1b[0m Checking for updates from official repository...\n");
+#ifdef _WIN32
+                int ret = system("powershell -ExecutionPolicy Bypass -Command \"irm https://raw.githubusercontent.com/VerScript/VerScript/main/install.ps1 | iex\"");
+                return ret;
+#else
+                int ret = system("curl -fsSL https://raw.githubusercontent.com/VerScript/VerScript/main/install.sh | bash");
+                return ret;
+#endif
+            }
+            if (strcmp(argv[2], "help") == 0) {
+                display_terminal_help(argc >= 4 ? argv[3] : "");
+                return 0;
+            }
+        }
     }
 
     FILE *file = fopen(argv[1], "rb");

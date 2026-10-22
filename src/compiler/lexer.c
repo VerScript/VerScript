@@ -406,6 +406,7 @@ Token getNextToken(const char **cursor) {
         if (len == 4 && strncmp(start, "case", 4) == 0) { token.type = TOKEN_CASE; return token; }
         if (len == 6 && strncmp(start, "pragma", 6) == 0) { token.type = TOKEN_PRAGMA; return token; }
         if (len == 6 && strncmp(start, "export", 6) == 0) { token.type = TOKEN_EXPORT; return token; }
+        if (len == 9 && strncmp(start, "construct", 9) == 0) { token.type = TOKEN_CONSTRUCT; return token; }
 
         token.type = TOKEN_IDENTIFIER;
         return token;
