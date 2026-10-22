@@ -202,7 +202,7 @@
       "patterns": [
         {
           "name": "support.type.exception.verscript",
-          "match": "\\b(MemoryAllocationError|UndefinedVariableError|InvalidOperandError|DivisionByZeroError|IndentationError|LoopIterationError|LoopLimitError|LoopDirectionError|LoopStepError|ScopeViolationError|SyntaxError|RuntimeError|InvalidErrorNameError|SystemError|VisibilityError|ImmutableError|IndexOutOfBoundsError|EntityError|FileError|DomainError|AssertError|DataTypeError|UnassignedVariableError|AsyncError|ChannelError|MatchError|AssertionError|OperationError|HeaderMismatchError|InvalidHeaderError)\\b"
+          "match": "\\b(MemoryAllocationError|UndefinedVariableError|InvalidOperandError|DivisionByZeroError|IndentationError|LoopIterationError|LoopLimitError|LoopDirectionError|LoopStepError|ScopeViolationError|SyntaxError|RuntimeError|InvalidErrorNameError|SystemError|VisibilityError|ImmutableError|IndexOutOfBoundsError|EntityError|FileError|DomainError|AssertError|DataTypeError|UnassignedVariableError|AsyncError|ChannelError|MatchError|AssertionError|OperationError|HeaderMismatchError|InvalidHeaderError|OutputTypeError|OutputTypeMissingError|OutputExistenceError|ComplexMathError)\\b"
         }
       ]
     },

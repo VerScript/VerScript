@@ -8,13 +8,14 @@
 #define _USE_MATH_DEFINES
 #endif
 #include <math.h>
+#include <stdint.h>
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
 #include "../include/opcodes.h"
 #include "../include/lexer.h"
 
-typedef enum { VAR_INT, VAR_STRING, VAR_BOOL, VAR_ARRAY, VAR_ENTITY } VarType;
+typedef enum { VAR_INT, VAR_STRING, VAR_BOOL, VAR_ARRAY, VAR_ENTITY, VAR_COMPLEX, VAR_TERMINAL, VAR_SCREEN, VAR_WORLD } VarType;
 
 struct Variable;
 struct Routine;
@@ -63,6 +64,8 @@ typedef struct Variable {
     char *string_val;
     Array *array_val;
     Entity *entity_val;
+    double complex_real;
+    double complex_imag;
     int scope_level;
     char declared_type[64];
     int is_temp;
@@ -286,6 +289,10 @@ __declspec(dllimport) BOOL __stdcall GetConsoleMode(HANDLE hConsoleHandle, DWORD
 __declspec(dllimport) BOOL __stdcall SetConsoleMode(HANDLE hConsoleHandle, DWORD dwMode);
 __declspec(dllimport) HANDLE __stdcall CreateFileA(const char*, DWORD, DWORD, void*, DWORD, DWORD, void*);
 __declspec(dllimport) BOOL __stdcall CloseHandle(HANDLE);
+typedef void* HMODULE;
+typedef intptr_t (__stdcall *FARPROC)();
+__declspec(dllimport) HMODULE __stdcall LoadLibraryA(const char*);
+__declspec(dllimport) FARPROC __stdcall GetProcAddress(HMODULE, const char*);
 
 static int ansi_colors_enabled = 0;
 
@@ -619,9 +626,11 @@ typedef struct {
     Array *array_val;
     Entity *entity_val;
     VarType type;
+    double complex_real;
+    double complex_imag;
 } ReplyResult;
 
-ReplyResult current_reply = {0, 0, NULL, NULL, NULL, VAR_INT};
+ReplyResult current_reply = {0, 0, NULL, NULL, NULL, VAR_INT, 0.0, 0.0};
 int call_stack_ptr = 0;
 int current_scope_depth = 0;
 
@@ -778,6 +787,10 @@ int is_error_name(const char *name) {
     if (strcmp(name, "OperationError") == 0) return 1;
     if (strcmp(name, "HeaderMismatchError") == 0) return 1;
     if (strcmp(name, "InvalidHeaderError") == 0) return 1;
+    if (strcmp(name, "OutputTypeError") == 0) return 1;
+    if (strcmp(name, "OutputTypeMissingError") == 0) return 1;
+    if (strcmp(name, "OutputExistenceError") == 0) return 1;
+    if (strcmp(name, "ComplexMathError") == 0) return 1;
     return 0;
 }
 
@@ -1329,6 +1342,279 @@ lib_context_done:
     return NULL;
 }
 
+// ===================================================================
+// Multi-Terminal Architecture
+// ===================================================================
+typedef struct TerminalTarget {
+    char name[64];
+    int is_open;
+    char title[128];
+} TerminalTarget;
+
+#define MAX_TERMINALS 32
+static TerminalTarget terminals[MAX_TERMINALS];
+static int terminal_count = 0;
+
+void init_terminals(void) {
+    if (terminal_count == 0) {
+        strncpy(terminals[0].name, "default", 63);
+        terminals[0].name[63] = '\0';
+        terminals[0].is_open = 1;
+        strncpy(terminals[0].title, "Default Terminal", 127);
+        terminal_count = 1;
+    }
+}
+
+int find_terminal_idx(const char *name) {
+    init_terminals();
+    if (!name || name[0] == '\0') return 0;
+    for (int i = 0; i < terminal_count; i++) {
+        if (strcmp(terminals[i].name, name) == 0) return i;
+    }
+    return -1;
+}
+
+int is_terminal_open(const char *name) {
+    int idx = find_terminal_idx(name);
+    if (idx >= 0) return terminals[idx].is_open;
+    return 0;
+}
+
+void register_terminal(const char *name) {
+    init_terminals();
+    int idx = find_terminal_idx(name);
+    if (idx >= 0) {
+        terminals[idx].is_open = 1;
+        return;
+    }
+    if (terminal_count < MAX_TERMINALS) {
+        strncpy(terminals[terminal_count].name, name, 63);
+        terminals[terminal_count].name[63] = '\0';
+        terminals[terminal_count].is_open = 1;
+        snprintf(terminals[terminal_count].title, 127, "Terminal %s", name);
+        terminal_count++;
+    }
+}
+
+void close_terminal(const char *name) {
+    int idx = find_terminal_idx(name);
+    if (idx >= 0) {
+        terminals[idx].is_open = 0;
+    }
+}
+
+// ===================================================================
+// 2D Screen & 3D World Rendering Architecture
+// ===================================================================
+typedef struct RenderSurface {
+    char name[64];
+    int kind; // 2 = 2D screen, 3 = 3D world
+    int is_open;
+    int width;
+    int height;
+} RenderSurface;
+
+#define MAX_SURFACES 32
+static RenderSurface render_surfaces[MAX_SURFACES];
+static int render_surface_count = 0;
+static int active_render_mode = 0; // 0=none, 2=2D, 3=3D
+
+void init_render_surfaces(void) {
+    if (render_surface_count == 0) {
+        strncpy(render_surfaces[0].name, "default2D", 63);
+        render_surfaces[0].kind = 2;
+        render_surfaces[0].is_open = 1;
+        render_surfaces[0].width = 800;
+        render_surfaces[0].height = 600;
+
+        strncpy(render_surfaces[1].name, "default3D", 63);
+        render_surfaces[1].kind = 3;
+        render_surfaces[1].is_open = 1;
+        render_surfaces[1].width = 800;
+        render_surfaces[1].height = 600;
+
+        render_surface_count = 2;
+    }
+}
+
+int find_render_surface_idx(const char *name) {
+    init_render_surfaces();
+    if (!name || name[0] == '\0') {
+        if (active_render_mode == 3) return 1;
+        return 0;
+    }
+    for (int i = 0; i < render_surface_count; i++) {
+        if (strcmp(render_surfaces[i].name, name) == 0) return i;
+    }
+    return -1;
+}
+
+void register_render_surface(const char *name, int kind) {
+    init_render_surfaces();
+    int idx = find_render_surface_idx(name);
+    if (idx >= 0) {
+        render_surfaces[idx].kind = kind;
+        render_surfaces[idx].is_open = 1;
+        return;
+    }
+    if (render_surface_count < MAX_SURFACES) {
+        strncpy(render_surfaces[render_surface_count].name, name, 63);
+        render_surfaces[render_surface_count].kind = kind;
+        render_surfaces[render_surface_count].is_open = 1;
+        render_surfaces[render_surface_count].width = 800;
+        render_surfaces[render_surface_count].height = 600;
+        render_surface_count++;
+    }
+}
+
+// ===================================================================
+// Complex Numbers Math Module
+// ===================================================================
+char* complex_to_string(double r, double i) {
+    char buf[128];
+    if (fabs(r) < 1e-9) {
+        snprintf(buf, sizeof(buf), "%.4gi", i);
+    } else if (i < 0) {
+        snprintf(buf, sizeof(buf), "%.4g - %.4gi", r, fabs(i));
+    } else {
+        snprintf(buf, sizeof(buf), "%.4g + %.4gi", r, i);
+    }
+    char *res = strdup(buf);
+    track_alloc(res);
+    return res;
+}
+
+// ===================================================================
+// C Foreign Function Interface (FFI) Module
+// ===================================================================
+typedef struct ExternDef {
+    char dll_name[128];
+    char func_name[64];
+    char param_types[8][32];
+    int param_count;
+    char return_type[32];
+    void *proc_ptr;
+    void *module_handle;
+} ExternDef;
+
+#define MAX_EXTERNS 32
+static ExternDef extern_defs[MAX_EXTERNS];
+static int extern_def_count = 0;
+
+int register_extern_function(const char *dll, const char *func, const char *ret_type, char param_types[8][32], int p_count) {
+    for (int i = 0; i < extern_def_count; i++) {
+        if (strcmp(extern_defs[i].func_name, func) == 0) return i;
+    }
+    if (extern_def_count >= MAX_EXTERNS) return -1;
+    ExternDef *ed = &extern_defs[extern_def_count++];
+    strncpy(ed->dll_name, dll, 127);
+    strncpy(ed->func_name, func, 63);
+    strncpy(ed->return_type, ret_type ? ret_type : "num", 31);
+    ed->param_count = p_count;
+    for (int i = 0; i < p_count; i++) {
+        strncpy(ed->param_types[i], param_types[i], 31);
+    }
+    ed->proc_ptr = NULL;
+    ed->module_handle = NULL;
+    return extern_def_count - 1;
+}
+
+ExternDef* find_extern_function(const char *name) {
+    for (int i = 0; i < extern_def_count; i++) {
+        if (strcmp(extern_defs[i].func_name, name) == 0) return &extern_defs[i];
+    }
+    return NULL;
+}
+
+void parse_extern_decl(const char *decl_str, int line_num) {
+    const char *p = decl_str;
+    while (isspace((unsigned char)*p)) p++;
+    char dll[128] = "";
+    char func[64] = "";
+    char ret_type[32] = "num";
+    char params[8][32];
+    int p_count = 0;
+
+    if (*p == '"') {
+        p++;
+        int d_idx = 0;
+        while (*p && *p != '"' && d_idx < 127) dll[d_idx++] = *p++;
+        dll[d_idx] = '\0';
+        if (*p == '"') p++;
+        while (isspace((unsigned char)*p)) p++;
+    } else if (strncmp(p, "func ", 5) != 0 && strncmp(p, "def ", 4) != 0) {
+        int d_idx = 0;
+        while (*p && !isspace((unsigned char)*p) && d_idx < 127) dll[d_idx++] = *p++;
+        dll[d_idx] = '\0';
+        while (isspace((unsigned char)*p)) p++;
+    }
+
+    if (strncmp(p, "func ", 5) == 0 || strncmp(p, "def ", 4) == 0) {
+        p = (*p == 'f') ? p + 5 : p + 4;
+        while (isspace((unsigned char)*p)) p++;
+    }
+
+    int f_idx = 0;
+    while (*p && (isalnum((unsigned char)*p) || *p == '_') && f_idx < 63) {
+        func[f_idx++] = *p++;
+    }
+    func[f_idx] = '\0';
+    while (isspace((unsigned char)*p)) p++;
+
+    if (*p == '(') {
+        p++;
+        while (*p && *p != ')') {
+            while (isspace((unsigned char)*p) || *p == ',') p++;
+            if (*p == ')') break;
+            char pname[64] = "";
+            char ptype[32] = "num";
+            int pn = 0;
+            while (*p && (isalnum((unsigned char)*p) || *p == '_') && pn < 63) pname[pn++] = *p++;
+            while (isspace((unsigned char)*p)) p++;
+            if (*p == ':') {
+                p++;
+                while (isspace((unsigned char)*p)) p++;
+                int pt = 0;
+                while (*p && (isalnum((unsigned char)*p) || *p == '_') && pt < 31) ptype[pt++] = *p++;
+                ptype[pt] = '\0';
+            }
+            if (p_count < 8) {
+                strncpy(params[p_count++], ptype, 31);
+            }
+            while (isspace((unsigned char)*p)) p++;
+            if (*p == ',') p++;
+        }
+        if (*p == ')') p++;
+    }
+
+    while (isspace((unsigned char)*p)) p++;
+    if (*p == '-' && *(p + 1) == '>') {
+        p += 2;
+        while (isspace((unsigned char)*p)) p++;
+        int rt = 0;
+        while (*p && (isalnum((unsigned char)*p) || *p == '_') && rt < 31) ret_type[rt++] = *p++;
+        ret_type[rt] = '\0';
+    }
+
+    const char *from_ptr = strstr(p, "from");
+    if (from_ptr && dll[0] == '\0') {
+        const char *dp = strchr(from_ptr, '"');
+        if (dp) {
+            dp++;
+            int d_idx = 0;
+            while (*dp && *dp != '"' && d_idx < 127) dll[d_idx++] = *dp++;
+            dll[d_idx] = '\0';
+        }
+    }
+
+    if (dll[0] == '\0' || func[0] == '\0') {
+        throw_error("SyntaxError", "Invalid extern declaration on line %d", line_num);
+    }
+
+    register_extern_function(dll, func, ret_type, params, p_count);
+}
+
+
 Variable* find_var(const char *name) {
     if (strcmp(name, "error") == 0) {
         Variable *v = NULL;
@@ -1730,6 +2016,116 @@ int evaluate_expression_val(const char **cursor, char **out_str, int *out_type, 
 int dispatch_array_method(Array *arr, const char *method, const char **cursor, char **out_str, int *out_type, Array **out_arr, Entity **out_ent, int line_num);
 int dispatch_string_method(const char *str, const char *method, const char **cursor, char **out_str, int *out_type, Array **out_arr, Entity **out_ent, int line_num);
 int is_native_func_name(const char *name);
+
+int call_extern_function(ExternDef *ed, const char **cursor, char **out_str, int *out_type, int *acc_out, int line_num) {
+    if (!ed) return 0;
+#ifdef _WIN32
+    if (!ed->module_handle) {
+        ed->module_handle = (void*)LoadLibraryA(ed->dll_name);
+        if (!ed->module_handle) {
+            throw_error("ExternalLibraryError", "Failed to load external library '%s' on line %d", ed->dll_name, line_num);
+            return 0;
+        }
+    }
+    if (!ed->proc_ptr) {
+        ed->proc_ptr = (void*)GetProcAddress((HMODULE)ed->module_handle, ed->func_name);
+        if (!ed->proc_ptr) {
+            throw_error("ExternalFunctionError", "Failed to locate symbol '%s' in '%s' on line %d", ed->func_name, ed->dll_name, line_num);
+            return 0;
+        }
+    }
+
+    intptr_t args[8];
+    memset(args, 0, sizeof(args));
+    int actual_p = 0;
+
+    Token lp = peekToken(cursor);
+    int has_parens = 0;
+    if (lp.type == TOKEN_LPAREN) {
+        has_parens = 1;
+        freeToken(&lp);
+        Token lpt = getNextToken(cursor); freeToken(&lpt);
+    } else {
+        freeToken(&lp);
+    }
+
+    for (int p_idx = 0; p_idx < ed->param_count; p_idx++) {
+        if (has_parens) {
+            Token p_chk = peekToken(cursor);
+            if (p_chk.type == TOKEN_RPAREN || p_chk.type == TOKEN_EOF) {
+                freeToken(&p_chk);
+                break;
+            }
+            freeToken(&p_chk);
+        }
+        char *p_str = NULL; int p_type = VAR_INT; Array *p_arr = NULL; Entity *p_ent = NULL;
+        int p_val = evaluate_expression_val(cursor, &p_str, &p_type, &p_arr, &p_ent);
+        if (strcmp(ed->param_types[p_idx], "str") == 0) {
+            args[actual_p++] = (intptr_t)(p_str ? p_str : "");
+        } else {
+            args[actual_p++] = (intptr_t)p_val;
+        }
+        if (has_parens) {
+            Token sep = peekToken(cursor);
+            if (sep.type == TOKEN_COMMA) {
+                freeToken(&sep);
+                Token ct = getNextToken(cursor); freeToken(&ct);
+            } else {
+                freeToken(&sep);
+            }
+        }
+    }
+
+    if (has_parens) {
+        Token rp = getNextToken(cursor);
+        if (rp.type != TOKEN_RPAREN) {
+            freeToken(&rp);
+            throw_error("SyntaxError", "Expected ')' in extern function call on line %d", line_num);
+        }
+        freeToken(&rp);
+    }
+
+    typedef intptr_t (*Fn0)();
+    typedef intptr_t (*Fn1)(intptr_t);
+    typedef intptr_t (*Fn2)(intptr_t, intptr_t);
+    typedef intptr_t (*Fn3)(intptr_t, intptr_t, intptr_t);
+    typedef intptr_t (*Fn4)(intptr_t, intptr_t, intptr_t, intptr_t);
+    typedef intptr_t (*Fn5)(intptr_t, intptr_t, intptr_t, intptr_t, intptr_t);
+    typedef intptr_t (*Fn6)(intptr_t, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t);
+    typedef intptr_t (*Fn7)(intptr_t, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t);
+    typedef intptr_t (*Fn8)(intptr_t, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t, intptr_t);
+
+    intptr_t res = 0;
+    switch (actual_p) {
+        case 0: res = ((Fn0)ed->proc_ptr)(); break;
+        case 1: res = ((Fn1)ed->proc_ptr)(args[0]); break;
+        case 2: res = ((Fn2)ed->proc_ptr)(args[0], args[1]); break;
+        case 3: res = ((Fn3)ed->proc_ptr)(args[0], args[1], args[2]); break;
+        case 4: res = ((Fn4)ed->proc_ptr)(args[0], args[1], args[2], args[3]); break;
+        case 5: res = ((Fn5)ed->proc_ptr)(args[0], args[1], args[2], args[3], args[4]); break;
+        case 6: res = ((Fn6)ed->proc_ptr)(args[0], args[1], args[2], args[3], args[4], args[5]); break;
+        case 7: res = ((Fn7)ed->proc_ptr)(args[0], args[1], args[2], args[3], args[4], args[5], args[6]); break;
+        case 8: res = ((Fn8)ed->proc_ptr)(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7]); break;
+        default: res = ((Fn0)ed->proc_ptr)(); break;
+    }
+
+    if (strcmp(ed->return_type, "str") == 0) {
+        *out_type = VAR_STRING;
+        *out_str = strdup((const char*)res);
+        track_alloc(*out_str);
+        if (acc_out) *acc_out = 0;
+        return 0;
+    } else {
+        *out_type = VAR_INT;
+        if (acc_out) *acc_out = (int)res;
+        return (int)res;
+    }
+#else
+    (void)cursor; (void)out_str; (void)out_type; (void)acc_out;
+    throw_error("PlatformError", "Extern FFI calls only supported on Windows in this build on line %d", line_num);
+    return 0;
+#endif
+}
 
 static inline int is_truthy(int val, const char *str_val, int type) {
     if (type == VAR_STRING) {
@@ -3745,7 +4141,58 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
         return acc;
     }
 
-    if (t.type == TOKEN_NUMBER) {
+    if (t.type == TOKEN_IMAG_NUMBER) {
+        double imag_val = atof(t.value ? t.value : "0") * sign;
+        *out_type = VAR_COMPLEX;
+        current_reply.type = VAR_COMPLEX;
+        current_reply.complex_real = 0.0;
+        current_reply.complex_imag = imag_val;
+        *out_str = complex_to_string(0.0, imag_val);
+        freeToken(&t);
+        return 0;
+    } else if (t.type == TOKEN_COMPLEX) {
+        Token lp = peekToken(cursor);
+        if (lp.type == TOKEN_LPAREN) {
+            freeToken(&lp);
+            Token lpt = getNextToken(cursor); freeToken(&lpt);
+            char *r_str = NULL; int r_type = VAR_INT; Array *r_arr = NULL; Entity *r_ent = NULL;
+            int r_val = evaluate_expression_val(cursor, &r_str, &r_type, &r_arr, &r_ent);
+            double r = (r_type == VAR_COMPLEX) ? current_reply.complex_real : (double)r_val;
+            double i = (r_type == VAR_COMPLEX) ? current_reply.complex_imag : 0.0;
+            if (r_str) { untrack_alloc(r_str); free(r_str); }
+            Token sep = peekToken(cursor);
+            if (sep.type == TOKEN_COMMA) {
+                freeToken(&sep);
+                Token ct = getNextToken(cursor); freeToken(&ct);
+                char *i_str = NULL; int i_type = VAR_INT; Array *i_arr = NULL; Entity *i_ent = NULL;
+                int i_val = evaluate_expression_val(cursor, &i_str, &i_type, &i_arr, &i_ent);
+                i = (i_type == VAR_COMPLEX) ? current_reply.complex_imag : (double)i_val;
+                if (i_str) { untrack_alloc(i_str); free(i_str); }
+            } else {
+                freeToken(&sep);
+            }
+            Token rp = getNextToken(cursor);
+            if (rp.type != TOKEN_RPAREN) {
+                freeToken(&rp);
+                throw_error("SyntaxError", "Expected ')' after complex(...) on line %d", current_executing_line);
+            }
+            freeToken(&rp);
+            *out_type = VAR_COMPLEX;
+            current_reply.type = VAR_COMPLEX;
+            current_reply.complex_real = r * sign;
+            current_reply.complex_imag = i * sign;
+            *out_str = complex_to_string(r * sign, i * sign);
+            freeToken(&t);
+            return 0;
+        } else {
+            freeToken(&lp);
+            *out_type = VAR_STRING;
+            *out_str = strdup("complex");
+            track_alloc(*out_str);
+            freeToken(&t);
+            return 0;
+        }
+    } else if (t.type == TOKEN_NUMBER) {
         acc = atoi(t.value) * sign;
     } else if (t.type == TOKEN_TRUE) {
         if (sign == -1) {
@@ -4405,7 +4852,48 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
 
             // Check if t.value is shadowed by a variable
             Variable *ev_shadow = get_var(t.value);
-            LibraryDef *lib = (ev_shadow && (ev_shadow->type == VAR_ARRAY || ev_shadow->type == VAR_STRING || (ev_shadow->type == VAR_ENTITY && ev_shadow->entity_val))) ? NULL : find_library(t.value);
+            if (ev_shadow && ev_shadow->type == VAR_COMPLEX) {
+                if (strcmp(mem.value, "real") == 0) {
+                    *out_type = VAR_INT;
+                    acc = (int)round(ev_shadow->complex_real) * sign;
+                    freeToken(&mem); freeToken(&t);
+                    return acc;
+                }
+                if (strcmp(mem.value, "imag") == 0) {
+                    *out_type = VAR_INT;
+                    acc = (int)round(ev_shadow->complex_imag) * sign;
+                    freeToken(&mem); freeToken(&t);
+                    return acc;
+                }
+                if (strcmp(mem.value, "abs") == 0) {
+                    Token cp = peekToken(cursor);
+                    if (cp.type == TOKEN_LPAREN) { freeToken(&cp); Token lp = getNextToken(cursor); freeToken(&lp); Token rp = getNextToken(cursor); freeToken(&rp); } else freeToken(&cp);
+                    *out_type = VAR_INT;
+                    acc = (int)round(hypot(ev_shadow->complex_real, ev_shadow->complex_imag)) * sign;
+                    freeToken(&mem); freeToken(&t);
+                    return acc;
+                }
+                if (strcmp(mem.value, "arg") == 0) {
+                    Token cp = peekToken(cursor);
+                    if (cp.type == TOKEN_LPAREN) { freeToken(&cp); Token lp = getNextToken(cursor); freeToken(&lp); Token rp = getNextToken(cursor); freeToken(&rp); } else freeToken(&cp);
+                    *out_type = VAR_INT;
+                    acc = (int)round(atan2(ev_shadow->complex_imag, ev_shadow->complex_real)) * sign;
+                    freeToken(&mem); freeToken(&t);
+                    return acc;
+                }
+                if (strcmp(mem.value, "conj") == 0) {
+                    Token cp = peekToken(cursor);
+                    if (cp.type == TOKEN_LPAREN) { freeToken(&cp); Token lp = getNextToken(cursor); freeToken(&lp); Token rp = getNextToken(cursor); freeToken(&rp); } else freeToken(&cp);
+                    *out_type = VAR_COMPLEX;
+                    current_reply.type = VAR_COMPLEX;
+                    current_reply.complex_real = ev_shadow->complex_real;
+                    current_reply.complex_imag = -ev_shadow->complex_imag;
+                    *out_str = complex_to_string(ev_shadow->complex_real, -ev_shadow->complex_imag);
+                    freeToken(&mem); freeToken(&t);
+                    return 0;
+                }
+            }
+            LibraryDef *lib = (ev_shadow && (ev_shadow->type == VAR_ARRAY || ev_shadow->type == VAR_STRING || ev_shadow->type == VAR_COMPLEX || (ev_shadow->type == VAR_ENTITY && ev_shadow->entity_val))) ? NULL : find_library(t.value);
             if (lib) {
                 Token call_peek = peekToken(cursor);
                 while (call_peek.type == TOKEN_DOT) {
@@ -4684,6 +5172,12 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
                     }
                     acc *= -1;
                 }
+            } else if (find_extern_function(t.value)) {
+                ExternDef *ed = find_extern_function(t.value);
+                freeToken(&call_peek);
+                acc = call_extern_function(ed, cursor, out_str, out_type, &acc, current_executing_line);
+                freeToken(&t);
+                return acc * sign;
             } else if (is_native_func_name(t.value)) {
                 freeToken(&call_peek);
                 Token lp = getNextToken(cursor); freeToken(&lp);
@@ -4867,7 +5361,12 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
                     *out_type = VAR_ENTITY;
                     if (out_ent) *out_ent = v->entity_val;
                     current_reply.entity_val = v->entity_val;
-                    *out_str = entity_to_string(v->entity_val);
+                } else if (v->type == VAR_COMPLEX) {
+                    *out_type = VAR_COMPLEX;
+                    current_reply.type = VAR_COMPLEX;
+                    current_reply.complex_real = v->complex_real * sign;
+                    current_reply.complex_imag = v->complex_imag * sign;
+                    *out_str = complex_to_string(v->complex_real * sign, v->complex_imag * sign);
                 }
             } else {
                 ClassDef *cd = find_class(t.value);
@@ -4896,6 +5395,12 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
                     }
                 } else if (is_pseudo_method_name(t.value)) {
                     acc = dispatch_pseudo_method(t.value, cursor, out_str, out_type, out_arr, out_ent, current_executing_line);
+                    if (sign == -1 && *out_type == VAR_INT) acc *= -1;
+                    freeToken(&t);
+                    return acc;
+                } else if (find_extern_function(t.value)) {
+                    ExternDef *ed = find_extern_function(t.value);
+                    acc = call_extern_function(ed, cursor, out_str, out_type, &acc, current_executing_line);
                     if (sign == -1 && *out_type == VAR_INT) acc *= -1;
                     freeToken(&t);
                     return acc;
@@ -5279,6 +5784,42 @@ static int evaluate_multiplicative_val(const char **cursor, char **out_str, int 
             Entity *rhs_ent = NULL;
             int rhs_val = evaluate_power_val(cursor, &rhs_str, &rhs_type, &rhs_arr, &rhs_ent);
 
+            if (*out_type == VAR_COMPLEX || rhs_type == VAR_COMPLEX) {
+                double r1 = (*out_type == VAR_COMPLEX) ? current_reply.complex_real : (double)acc;
+                double i1 = (*out_type == VAR_COMPLEX) ? current_reply.complex_imag : 0.0;
+                double r2 = (rhs_type == VAR_COMPLEX) ? current_reply.complex_real : (double)rhs_val;
+                double i2 = (rhs_type == VAR_COMPLEX) ? current_reply.complex_imag : 0.0;
+                if (op_type == TOKEN_STAR) {
+                    double r = r1 * r2 - i1 * i2;
+                    double i = r1 * i2 + i1 * r2;
+                    *out_type = VAR_COMPLEX;
+                    current_reply.type = VAR_COMPLEX;
+                    current_reply.complex_real = r;
+                    current_reply.complex_imag = i;
+                    if (*out_str) { untrack_alloc(*out_str); free(*out_str); }
+                    *out_str = complex_to_string(r, i);
+                    acc = 0;
+                } else if (op_type == TOKEN_SLASH) {
+                    double denom = r2 * r2 + i2 * i2;
+                    if (denom < 1e-12) {
+                        throw_error("ComplexMathError", "Complex division by zero on line %d", current_executing_line);
+                    }
+                    double r = (r1 * r2 + i1 * i2) / denom;
+                    double i = (i1 * r2 - r1 * i2) / denom;
+                    *out_type = VAR_COMPLEX;
+                    current_reply.type = VAR_COMPLEX;
+                    current_reply.complex_real = r;
+                    current_reply.complex_imag = i;
+                    if (*out_str) { untrack_alloc(*out_str); free(*out_str); }
+                    *out_str = complex_to_string(r, i);
+                    acc = 0;
+                } else {
+                    throw_error("ComplexMathError", "Unsupported operator on complex number on line %d", current_executing_line);
+                }
+                if (rhs_str) { untrack_alloc(rhs_str); free(rhs_str); }
+                continue;
+            }
+
             if (op_type == TOKEN_STAR) {
                 if (*out_type == VAR_ARRAY || rhs_type == VAR_ARRAY) {
                     perform_matrix_vector_mul(
@@ -5356,6 +5897,24 @@ static int evaluate_arithmetic_val(const char **cursor, char **out_str, int *out
             Array *rhs_arr = NULL;
             Entity *rhs_ent = NULL;
             int rhs_val = evaluate_multiplicative_val(cursor, &rhs_str, &rhs_type, &rhs_arr, &rhs_ent);
+
+            if (*out_type == VAR_COMPLEX || rhs_type == VAR_COMPLEX) {
+                double r1 = (*out_type == VAR_COMPLEX) ? current_reply.complex_real : (double)acc;
+                double i1 = (*out_type == VAR_COMPLEX) ? current_reply.complex_imag : 0.0;
+                double r2 = (rhs_type == VAR_COMPLEX) ? current_reply.complex_real : (double)rhs_val;
+                double i2 = (rhs_type == VAR_COMPLEX) ? current_reply.complex_imag : 0.0;
+                double r = (op_type == TOKEN_PLUS) ? (r1 + r2) : (r1 - r2);
+                double i = (op_type == TOKEN_PLUS) ? (i1 + i2) : (i1 - i2);
+                *out_type = VAR_COMPLEX;
+                current_reply.type = VAR_COMPLEX;
+                current_reply.complex_real = r;
+                current_reply.complex_imag = i;
+                if (*out_str) { untrack_alloc(*out_str); free(*out_str); }
+                *out_str = complex_to_string(r, i);
+                acc = 0;
+                if (rhs_str) { untrack_alloc(rhs_str); free(rhs_str); }
+                continue;
+            }
 
             if (op_type == TOKEN_PLUS) {
                 if ((*out_type == VAR_ARRAY || rhs_type == VAR_ARRAY) &&
@@ -6156,6 +6715,18 @@ void execute_line(const char *text, int line_num) {
             continue;
         }
         else if (t.type == TOKEN_DISPLAY) {
+            char target_term[64] = "default";
+            const char *in_pos = strstr(resolved_text, " in ");
+            if (in_pos) {
+                const char *p = in_pos + 4;
+                while (isspace((unsigned char)*p)) p++;
+                int tlen = 0;
+                while (p[tlen] && (isalnum((unsigned char)p[tlen]) || p[tlen] == '_') && tlen < 63) tlen++;
+                if (tlen > 0) { strncpy(target_term, p, tlen); target_term[tlen] = '\0'; }
+                if (!is_terminal_open(target_term)) {
+                    throw_error("OutputExistenceError", "Terminal '%s' does not exist or has been closed on line %d", target_term, line_num);
+                }
+            }
             char col[64] = "";
             get_attribute_str(resolved_text, "color", col, sizeof(col));
             int newline = 1;
@@ -6164,6 +6735,11 @@ void execute_line(const char *text, int line_num) {
                 if (strcmp(nl, "false") == 0 || strcmp(nl, "0") == 0) newline = 0;
             }
             if (strstr(resolved_text, "?inline") != NULL) newline = 0;
+
+            if (strcmp(target_term, "default") != 0) {
+                if (ansi_colors_enabled) printf("\x1b[1;35m[%s]\x1b[0m ", target_term);
+                else printf("[%s] ", target_term);
+            }
 
             if (col[0] != '\0') {
                 apply_color(col);
@@ -6174,7 +6750,10 @@ void execute_line(const char *text, int line_num) {
             Array *out_arr = NULL;
             Entity *out_ent = NULL;
             int val = evaluate_expression_val(&cursor, &out_str, &out_type, &out_arr, &out_ent);
-            if (out_type == VAR_ARRAY) {
+            if (out_type == VAR_COMPLEX) {
+                char *s = complex_to_string(current_reply.complex_real, current_reply.complex_imag);
+                printf("%s", s ? s : "0i");
+            } else if (out_type == VAR_ARRAY) {
                 Array *target = out_arr ? out_arr : current_reply.array_val;
                 char *s = array_to_string(target);
                 printf("%s", s ? s : "[]");
@@ -6193,6 +6772,231 @@ void execute_line(const char *text, int line_num) {
             }
             if (col[0] != '\0' && ansi_colors_enabled) printf("\033[0m");
             if (newline) printf("\n");
+        }
+        else if (t.type == TOKEN_TERMINAL) {
+            Token name_tok = getNextToken(&cursor);
+            if (name_tok.type != TOKEN_IDENTIFIER) {
+                freeToken(&name_tok);
+                throw_error("SyntaxError", "Expected terminal identifier after 'terminal' on line %d", line_num);
+            }
+            register_terminal(name_tok.value);
+            Variable *v = set_var_scoped(name_tok.value, line_num);
+            v->type = VAR_TERMINAL;
+            strncpy(v->declared_type, "terminal", 63);
+            freeToken(&name_tok);
+            return;
+        }
+        else if (t.type == TOKEN_SCREEN) {
+            Token name_tok = getNextToken(&cursor);
+            if (name_tok.type != TOKEN_IDENTIFIER) {
+                freeToken(&name_tok);
+                throw_error("SyntaxError", "Expected screen identifier after 'screen' on line %d", line_num);
+            }
+            register_render_surface(name_tok.value, 2);
+            Variable *v = set_var_scoped(name_tok.value, line_num);
+            v->type = VAR_SCREEN;
+            strncpy(v->declared_type, "screen", 63);
+            freeToken(&name_tok);
+            return;
+        }
+        else if (t.type == TOKEN_WORLD) {
+            Token name_tok = getNextToken(&cursor);
+            if (name_tok.type != TOKEN_IDENTIFIER) {
+                freeToken(&name_tok);
+                throw_error("SyntaxError", "Expected world identifier after 'world' on line %d", line_num);
+            }
+            register_render_surface(name_tok.value, 3);
+            Variable *v = set_var_scoped(name_tok.value, line_num);
+            v->type = VAR_WORLD;
+            strncpy(v->declared_type, "world", 63);
+            freeToken(&name_tok);
+            return;
+        }
+        else if (t.type == TOKEN_RENDER) {
+            Token col = getNextToken(&cursor);
+            if (col.type == TOKEN_COLON) { freeToken(&col); } else freeToken(&col);
+            Token mode_tok = getNextToken(&cursor);
+            if (mode_tok.value) {
+                if (strstr(mode_tok.value, "2D") || strstr(mode_tok.value, "2d")) {
+                    active_render_mode = 2;
+                    register_render_surface("default2D", 2);
+                } else if (strstr(mode_tok.value, "3D") || strstr(mode_tok.value, "3d")) {
+                    active_render_mode = 3;
+                    register_render_surface("default3D", 3);
+                }
+            }
+            freeToken(&mode_tok);
+            return;
+        }
+        else if (t.type == TOKEN_DRAW) {
+            if (active_render_mode == 0 && render_surface_count <= 2) {
+                int has_custom = 0;
+                for (int s = 2; s < render_surface_count; s++) { if (render_surfaces[s].kind == 2) has_custom = 1; }
+                if (!has_custom && active_render_mode != 2) {
+                    throw_error("OutputTypeMissingError", "Render output surface not declared. Use 'render: 2D' or instantiate a 'screen' on line %d", line_num);
+                }
+            }
+            char target_surf[64] = "default2D";
+            const char *in_pos = strstr(resolved_text, " in ");
+            if (in_pos) {
+                const char *p = in_pos + 4;
+                while (isspace((unsigned char)*p)) p++;
+                int tlen = 0;
+                while (p[tlen] && (isalnum((unsigned char)p[tlen]) || p[tlen] == '_') && tlen < 63) tlen++;
+                if (tlen > 0) { strncpy(target_surf, p, tlen); target_surf[tlen] = '\0'; }
+            }
+            int s_idx = find_render_surface_idx(target_surf);
+            if (s_idx < 0) {
+                throw_error("OutputExistenceError", "Screen surface '%s' does not exist on line %d", target_surf, line_num);
+            }
+            if (render_surfaces[s_idx].kind != 2) {
+                throw_error("OutputTypeError", "Cannot draw 2D primitive on 3D world or non-screen '%s' on line %d", target_surf, line_num);
+            }
+            return;
+        }
+        else if (t.type == TOKEN_SPAWN) {
+            if (active_render_mode == 0 && render_surface_count <= 2) {
+                int has_custom = 0;
+                for (int s = 2; s < render_surface_count; s++) { if (render_surfaces[s].kind == 3) has_custom = 1; }
+                if (!has_custom && active_render_mode != 3) {
+                    throw_error("OutputTypeMissingError", "Render output surface not declared. Use 'render: 3D' or instantiate a 'world' on line %d", line_num);
+                }
+            }
+            char target_surf[64] = "default3D";
+            const char *in_pos = strstr(resolved_text, " in ");
+            if (in_pos) {
+                const char *p = in_pos + 4;
+                while (isspace((unsigned char)*p)) p++;
+                int tlen = 0;
+                while (p[tlen] && (isalnum((unsigned char)p[tlen]) || p[tlen] == '_') && tlen < 63) tlen++;
+                if (tlen > 0) { strncpy(target_surf, p, tlen); target_surf[tlen] = '\0'; }
+            }
+            int s_idx = find_render_surface_idx(target_surf);
+            if (s_idx < 0) {
+                throw_error("OutputExistenceError", "World surface '%s' does not exist on line %d", target_surf, line_num);
+            }
+            if (render_surfaces[s_idx].kind != 3) {
+                throw_error("OutputTypeError", "Cannot spawn 3D primitive on 2D screen '%s' on line %d", target_surf, line_num);
+            }
+            return;
+        }
+        else if (t.type == TOKEN_CLOSE) {
+            Token name_tok = getNextToken(&cursor);
+            if (name_tok.type == TOKEN_IDENTIFIER && name_tok.value) {
+                int t_idx = find_terminal_idx(name_tok.value);
+                if (t_idx >= 0) {
+                    close_terminal(name_tok.value);
+                }
+                int s_idx = find_render_surface_idx(name_tok.value);
+                if (s_idx >= 0) {
+                    render_surfaces[s_idx].is_open = 0;
+                }
+            }
+            freeToken(&name_tok);
+            return;
+        }
+        else if (t.type == TOKEN_EXTERN) {
+            Token dll_tok = getNextToken(&cursor);
+            char dll_name[128] = "";
+            if (dll_tok.value) strncpy(dll_name, dll_tok.value, 127);
+            freeToken(&dll_tok);
+            Token fn_tok = getNextToken(&cursor);
+            char fn_name[64] = "";
+            if (fn_tok.value) strncpy(fn_name, fn_tok.value, 63);
+            freeToken(&fn_tok);
+            Token lp = getNextToken(&cursor); freeToken(&lp);
+            char ptypes[8][32];
+            int pcount = 0;
+            while (pcount < 8) {
+                Token pt = peekToken(&cursor);
+                if (pt.type == TOKEN_RPAREN || pt.type == TOKEN_EOF) { freeToken(&pt); break; }
+                freeToken(&pt);
+                Token arg_t = getNextToken(&cursor);
+                if (arg_t.value) strncpy(ptypes[pcount++], arg_t.value, 31);
+                freeToken(&arg_t);
+                Token sep = peekToken(&cursor);
+                if (sep.type == TOKEN_COMMA) { freeToken(&sep); Token c = getNextToken(&cursor); freeToken(&c); }
+                else freeToken(&sep);
+            }
+            Token rp = getNextToken(&cursor); freeToken(&rp);
+            char ret_type[32] = "num";
+            Token col = peekToken(&cursor);
+            if (col.type == TOKEN_COLON) {
+                freeToken(&col);
+                Token c = getNextToken(&cursor); freeToken(&c);
+                Token rt = getNextToken(&cursor);
+                if (rt.value) strncpy(ret_type, rt.value, 31);
+                freeToken(&rt);
+            } else freeToken(&col);
+            register_extern_function(dll_name, fn_name, ret_type, ptypes, pcount);
+            return;
+        }
+        else if (t.type == TOKEN_UNPACK) {
+            Token next = getNextToken(&cursor);
+            if (next.type == TOKEN_LBRACKET) {
+                char var_names[16][64];
+                int is_rest[16];
+                int var_c = 0;
+                while (var_c < 16) {
+                    Token vt = getNextToken(&cursor);
+                    if (vt.type == TOKEN_RBRACKET || vt.type == TOKEN_EOF) { freeToken(&vt); break; }
+                    int rest_flag = 0;
+                    if (vt.value && strncmp(vt.value, "...", 3) == 0) {
+                        rest_flag = 1;
+                        strncpy(var_names[var_c], vt.value + 3, 63);
+                    } else if (vt.value) {
+                        strncpy(var_names[var_c], vt.value, 63);
+                    }
+                    is_rest[var_c] = rest_flag;
+                    var_c++;
+                    freeToken(&vt);
+                    Token sep = peekToken(&cursor);
+                    if (sep.type == TOKEN_COMMA) { freeToken(&sep); Token c = getNextToken(&cursor); freeToken(&c); }
+                    else freeToken(&sep);
+                }
+                Token col = getNextToken(&cursor);
+                if (col.type != TOKEN_COLON) { freeToken(&col); throw_error("SyntaxError", "Expected ':' in unpack on line %d", line_num); }
+                freeToken(&col);
+                char *s = NULL; int ty = VAR_ARRAY; Array *arr = NULL; Entity *ent = NULL;
+                evaluate_expression_val(&cursor, &s, &ty, &arr, &ent);
+                Array *target_arr = arr ? arr : current_reply.array_val;
+                for (int k = 0; k < var_c; k++) {
+                    Variable *v = set_var_scoped(var_names[k], line_num);
+                    if (is_rest[k]) {
+                        Array *tail = create_array();
+                        if (target_arr) {
+                            for (int idx = k; idx < target_arr->count; idx++) {
+                                array_append(tail, &target_arr->items[idx]);
+                            }
+                        }
+                        v->type = VAR_ARRAY;
+                        v->array_val = tail;
+                        break;
+                    } else {
+                        if (target_arr && k < target_arr->count) {
+                            Variable *src = &target_arr->items[k];
+                            v->type = src->type;
+                            v->int_val = src->int_val;
+                            if (src->string_val) v->string_val = strdup(src->string_val);
+                            v->array_val = src->array_val;
+                            v->entity_val = src->entity_val;
+                        }
+                    }
+                }
+                return;
+            }
+            freeToken(&next);
+        }
+        else if (t.type == TOKEN_YIELD) {
+            char *y_str = NULL; int y_type = VAR_INT; Array *y_arr = NULL; Entity *y_ent = NULL;
+            int y_val = evaluate_expression_val(&cursor, &y_str, &y_type, &y_arr, &y_ent);
+            current_reply.has_replied = 1;
+            current_reply.type = y_type;
+            current_reply.int_val = y_val;
+            current_reply.string_val = y_str;
+            current_reply.array_val = y_arr;
+            current_reply.entity_val = y_ent;
+            return;
         }
         else if (t.type == TOKEN_PROMPT) {
             Token var_tok = getNextToken(&cursor);
@@ -6343,6 +7147,10 @@ void execute_line(const char *text, int line_num) {
                 v->array_val = out_arr ? out_arr : current_reply.array_val;
             } else if (out_type == VAR_ENTITY) {
                 v->entity_val = out_ent ? out_ent : current_reply.entity_val;
+            } else if (out_type == VAR_COMPLEX) {
+                v->complex_real = current_reply.complex_real;
+                v->complex_imag = current_reply.complex_imag;
+                if (v->string_val) { free(v->string_val); v->string_val = NULL; }
             } else if (out_str) {
                 if (v->string_val) free(v->string_val);
                 untrack_alloc(out_str);
@@ -6468,6 +7276,10 @@ void execute_line(const char *text, int line_num) {
                 v->array_val = out_arr ? out_arr : current_reply.array_val;
             } else if (out_type == VAR_ENTITY) {
                 v->entity_val = out_ent ? out_ent : current_reply.entity_val;
+            } else if (out_type == VAR_COMPLEX) {
+                v->complex_real = current_reply.complex_real;
+                v->complex_imag = current_reply.complex_imag;
+                if (v->string_val) { free(v->string_val); v->string_val = NULL; }
             } else if (out_str) {
                 if (v->string_val) free(v->string_val);
                 untrack_alloc(out_str);
@@ -6617,7 +7429,10 @@ void execute_line(const char *text, int line_num) {
                 strncpy(v->declared_type, decl_type, 63);
                 v->declared_type[63] = '\0';
                 v->type = out_type;
-                if (out_type == VAR_ARRAY) {
+                if (out_type == VAR_COMPLEX) {
+                    v->complex_real = current_reply.complex_real;
+                    v->complex_imag = current_reply.complex_imag;
+                } else if (out_type == VAR_ARRAY) {
                     v->array_val = out_arr ? out_arr : current_reply.array_val;
                 } else if (out_type == VAR_ENTITY) {
                     v->entity_val = out_ent ? out_ent : current_reply.entity_val;
@@ -6978,7 +7793,10 @@ void execute_line(const char *text, int line_num) {
                 is_outscope_assign = 0;
                 is_outbound_assign = 0;
                 v->type = out_type;
-                if (out_type == VAR_ARRAY) {
+                if (out_type == VAR_COMPLEX) {
+                    v->complex_real = current_reply.complex_real;
+                    v->complex_imag = current_reply.complex_imag;
+                } else if (out_type == VAR_ARRAY) {
                     v->array_val = out_arr ? out_arr : current_reply.array_val;
                 } else if (out_type == VAR_ENTITY) {
                     v->entity_val = out_ent ? out_ent : current_reply.entity_val;
@@ -8750,6 +9568,68 @@ void execute_block(int start, int end) {
             }
             i = block_end + 1;
         }
+        else if (strncmp(effective_text, "repeat ", 7) == 0) {
+            int block_start = i + 1;
+            int block_end = i;
+            while (block_end + 1 <= end) {
+                Line *next = &lines[block_end + 1];
+                if (next->text[0] == '\0' || next->text[0] == '!') {
+                    block_end++;
+                    continue;
+                }
+                if (next->indent > line->indent) {
+                    block_end++;
+                } else {
+                    break;
+                }
+            }
+
+            const char *cursor = effective_text + 7;
+            while (isspace((unsigned char)*cursor)) cursor++;
+
+            char loop_var[64] = "";
+            char expr_part[256] = "";
+            const char *as_ptr = strstr(cursor, " as ");
+            if (as_ptr) {
+                int expr_len = (int)(as_ptr - cursor);
+                if (expr_len > 255) expr_len = 255;
+                strncpy(expr_part, cursor, expr_len);
+                expr_part[expr_len] = '\0';
+                const char *var_cursor = as_ptr + 4;
+                while (isspace((unsigned char)*var_cursor)) var_cursor++;
+                int v_idx = 0;
+                while (*var_cursor && !isspace((unsigned char)*var_cursor) && *var_cursor != ':' && v_idx < 63) {
+                    loop_var[v_idx++] = *var_cursor++;
+                }
+                loop_var[v_idx] = '\0';
+            } else {
+                strncpy(expr_part, cursor, sizeof(expr_part) - 1);
+                char *colon = strchr(expr_part, ':');
+                if (colon) *colon = '\0';
+            }
+
+            const char *ec = expr_part;
+            char *out_s = NULL; int out_t = VAR_INT;
+            int count = evaluate_expression(&ec, &out_s, &out_t);
+            if (out_s) { untrack_alloc(out_s); free(out_s); }
+
+            for (int r = 0; r < count; r++) {
+                if (loop_var[0] != '\0') {
+                    Variable *lv = set_var(loop_var);
+                    lv->type = VAR_INT;
+                    lv->int_val = r;
+                }
+                execute_block(block_start, block_end);
+                if (current_reply.has_replied) break;
+                if (active_watch.active && active_watch.triggered) break;
+            }
+            i = block_end + 1;
+        }
+        else if (strncmp(effective_text, "extern ", 7) == 0) {
+            parse_extern_decl(effective_text + 7, line->line_num);
+            i++;
+            continue;
+        }
         else if (strcmp(effective_text, "do") == 0) {
             int do_start = i + 1;
             int do_end = i;
@@ -9072,6 +9952,7 @@ void execute_block(int start, int end) {
             strncmp(effective_text, "if ", 3) == 0 ||
             strncmp(effective_text, "while ", 6) == 0 ||
             strncmp(effective_text, "until ", 6) == 0 ||
+            strncmp(effective_text, "repeat ", 7) == 0 ||
             strcmp(effective_text, "do") == 0 ||
             strcmp(effective_text, "ForceErrors") == 0 ||
             strcmp(effective_text, "CriticalErrors") == 0 ||

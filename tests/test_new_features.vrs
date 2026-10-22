@@ -1,0 +1,6 @@
+﻿repeat 3 as i:
+  display i
+
+extern  kernel32.dll func GetCurrentProcessId() -> num
+set pid: (GetCurrentProcessId)
+display pid
