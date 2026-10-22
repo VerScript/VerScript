@@ -9028,11 +9028,11 @@ void start_repl(void) {
     in_repl_mode = 1;
     init_math_constants();
     if (ansi_colors_enabled) {
-        printf("\x1b[1;36mVerScript 1.2.0 (Interactive Shell)\x1b[0m\n");
-        printf("Type \x1b[33mexit\x1b[0m to quit, \x1b[33mhelp\x1b[0m for cheatsheet, \x1b[33mvars\x1b[0m to inspect variables.\n\n");
+        printf("\x1b[1;36mVerScript 2.0.0 (Interactive Shell)\x1b[0m\n");
+        printf("Type \x1b[33mexit\x1b[0m to quit, \x1b[33mhelp\x1b[0m for cheatsheet, \x1b[33mvars\x1b[0m for memory, or run '\x1b[32mverscript update\x1b[0m'.\n\n");
     } else {
-        printf("VerScript 1.2.0 (Interactive Shell)\n");
-        printf("Type exit to quit, help for cheatsheet, vars to inspect variables.\n\n");
+        printf("VerScript 2.0.0 (Interactive Shell)\n");
+        printf("Type exit to quit, help for cheatsheet, vars for memory, or run 'verscript update'.\n\n");
     }
 
     char line_buf[4096];
@@ -9207,16 +9207,31 @@ int main(int argc, char *argv[]) {
     }
 
     if (strcmp(argv[1], "-v") == 0 || strcmp(argv[1], "--version") == 0) {
-        printf("VerScript 1.2.0 (x86_64-windows)\n");
+        printf("VerScript 2.0.0 (x86_64-windows)\n");
+        printf("Release: v2.0.0 (Official Language Release)\n");
+        printf("Run 'verscript update' to check and install updates from GitHub.\n");
         return 0;
+    }
+    if (strcmp(argv[1], "update") == 0 || strcmp(argv[1], "--update") == 0) {
+        printf("\x1b[1;36m[VerScript Updater]\x1b[0m Checking for updates from official repository...\n");
+#ifdef _WIN32
+        int ret = system("powershell -ExecutionPolicy Bypass -Command \"irm https://raw.githubusercontent.com/VerScript/VerScript/main/install.ps1 | iex\"");
+        return ret;
+#else
+        int ret = system("curl -fsSL https://raw.githubusercontent.com/VerScript/VerScript/main/install.sh | bash");
+        return ret;
+#endif
     }
     if (strcmp(argv[1], "-h") == 0 || strcmp(argv[1], "--help") == 0) {
         printf("Usage:\n");
-        printf("  verscript              Start interactive REPL shell\n");
-        printf("  verscript <file.vrs>   Run VerScript program\n");
-        printf("  verscript -i           Start interactive REPL shell\n");
-        printf("  verscript -v           Display version information\n");
-        printf("  verscript -h           Display this help screen\n");
+        printf("  verscript                        Start interactive REPL shell\n");
+        printf("  verscript <file.vrs>             Run VerScript program\n");
+        printf("  verscript <file.lib.vrs>         Load and test library module\n");
+        printf("  verscript <file.h.vrs>           Validate header contract specification\n");
+        printf("  verscript update                 Check and install latest VerScript update\n");
+        printf("  verscript -i                     Start interactive REPL shell\n");
+        printf("  verscript -v                     Display version information\n");
+        printf("  verscript -h                     Display this help screen\n");
         return 0;
     }
 
