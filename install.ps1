@@ -37,6 +37,17 @@ if (Test-Path (Join-Path $RepoDir "tooling\installer\help.ps1")) {
     Copy-Item (Join-Path $RepoDir "tooling\installer\help.ps1") (Join-Path $TargetDir "help.ps1") -Force
 }
 
+$MingwBin = "$env:USERPROFILE\mingw64\bin"
+if (Test-Path $MingwBin) {
+    Copy-Item (Join-Path $RepoDir "verscript.exe") (Join-Path $MingwBin "verscript.exe") -Force
+    if (Test-Path (Join-Path $RepoDir "tooling\installer\help.cmd")) {
+        Copy-Item (Join-Path $RepoDir "tooling\installer\help.cmd") (Join-Path $MingwBin "help.cmd") -Force
+    }
+    if (Test-Path (Join-Path $RepoDir "tooling\installer\help.ps1")) {
+        Copy-Item (Join-Path $RepoDir "tooling\installer\help.ps1") (Join-Path $MingwBin "help.ps1") -Force
+    }
+}
+
 $IcoSrc = if (Test-Path (Join-Path $RepoDir "tooling\installer\verscript.ico")) { Join-Path $RepoDir "tooling\installer\verscript.ico" } else { Join-Path $RepoDir "logo.ico" }
 $PngSrc = if (Test-Path (Join-Path $RepoDir "tooling\installer\verscript_logo.png")) { Join-Path $RepoDir "tooling\installer\verscript_logo.png" } else { Join-Path $RepoDir "logo.png" }
 
