@@ -53,16 +53,20 @@ const grammar = {
   $schema: "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
   name: "VerScript",
   scopeName: "source.verscript",
-  fileTypes: ["vrs", "lib.vrs"],
+  fileTypes: ["vrs", "lib.vrs", "h.vrs"],
   patterns: [
     { include: "#comments" },
     { include: "#strings" },
     { include: "#attributes" },
     { include: "#numbers" },
     { include: "#booleans" },
+    { include: "#constants-math" },
     { include: "#keywords-declaration" },
     { include: "#keywords-control" },
     { include: "#keywords-concurrency" },
+    { include: "#keywords-terminal" },
+    { include: "#keywords-graphics" },
+    { include: "#keywords-complex" },
     { include: "#types" },
     { include: "#built-in-errors" },
     { include: "#stdlib-modules" },
@@ -119,26 +123,47 @@ const grammar = {
         { name: "constant.language.boolean.verscript", match: "\\b(true|false|null|nil)\\b" }
       ]
     },
+    "constants-math": {
+      patterns: [
+        { name: "constant.language.math.verscript", match: "\\b(pi|tau|phi|inf|infinity)\\b" }
+      ]
+    },
     "keywords-declaration": {
       patterns: [
-        { name: "keyword.declaration.verscript", match: "\\b(def|func|method|class|lib|DataType|alias)\\b" },
+        { name: "keyword.declaration.verscript", match: "\\b(def|func|method|class|lib|library|pkg|DataType|alias|enum|struct|construct|extern)\\b" },
         { name: "storage.modifier.section.verscript", match: "\\b(static|dynamic|meta|thisstatic|const)\\b" },
-        { name: "storage.modifier.visibility.verscript", match: "\\b(public|private)\\b" },
-        { name: "storage.modifier.lifecycle.verscript", match: "\\b(inbound|outbound|outscope|temp|inst)\\b" },
-        { name: "keyword.control.directive.verscript", match: "\\b(import|from|as|load|inject|del)\\b" }
+        { name: "storage.modifier.visibility.verscript", match: "\\b(public|private|export)\\b" },
+        { name: "storage.modifier.lifecycle.verscript", match: "\\b(inbound|outbound|outscope|temp|inst|unpack)\\b" },
+        { name: "keyword.control.directive.verscript", match: "\\b(import|include|header|config|pragma|from|as|load|inject|del|extends)\\b" }
       ]
     },
     "keywords-control": {
       patterns: [
-        { name: "keyword.control.conditional.verscript", match: "\\b(if|then|else|guard|match|with)\\b" },
-        { name: "keyword.control.repeat.verscript", match: "\\b(loop|repeat|while|until|cycle|for|by|step)\\b" },
+        { name: "keyword.control.conditional.verscript", match: "\\b(if|then|else|guard|match|with|case)\\b" },
+        { name: "keyword.control.repeat.verscript", match: "\\b(loop|repeat|while|until|cycle|for|by|step|iterate|in|yield)\\b" },
         { name: "keyword.control.watch.verscript", match: "\\b(do|unless|internal|external)\\b" },
-        { name: "keyword.control.flow.verscript", match: "\\b(reply|throw)\\b" }
+        { name: "keyword.control.flow.verscript", match: "\\b(reply|throw)\\b" },
+        { name: "keyword.operator.logical.verscript", match: "\\b(and|or|not|nand|nor|xor|xnor|xand|is|even|odd)\\b" }
       ]
     },
     "keywords-concurrency": {
       patterns: [
-        { name: "keyword.control.concurrency.verscript", match: "\\b(display|prompt|emit|on|when|async|sync|send|recv|channel)\\b" }
+        { name: "keyword.control.concurrency.verscript", match: "\\b(display|prompt|emit|on|when|async|sync|send|recv|channel|chan|close)\\b" }
+      ]
+    },
+    "keywords-terminal": {
+      patterns: [
+        { name: "support.class.terminal.verscript", match: "\\b(terminal|flush|focus|title|split)\\b" }
+      ]
+    },
+    "keywords-graphics": {
+      patterns: [
+        { name: "support.function.graphics.verscript", match: "\\b(render|screen|world|draw|spawn|camera|light|scene|rect|circle|line|box|sphere|fill|stroke|pixel|frame)\\b" }
+      ]
+    },
+    "keywords-complex": {
+      patterns: [
+        { name: "support.type.complex.verscript", match: "\\b(complex|real|imag|conj)\\b" }
       ]
     },
     types: {
@@ -272,6 +297,32 @@ if (primaryDbPath) {
             };
             db.push(newModEntry);
             addedCount++;
+        }
+    }
+
+    // Check all keywords in lexer.c
+    if (fs.existsSync(lexerC)) {
+        const lexerContent = fs.readFileSync(lexerC, 'utf8');
+        const kwMatches = [...lexerContent.matchAll(/strncmp\(start,\s*"([^"]+)",\s*(\d+)\)/g)].map(m => m[1]);
+        const uniqueKws = [...new Set(kwMatches)];
+        for (const kw of uniqueKws) {
+            if (!db.some(x => x.name.toLowerCase() === kw.toLowerCase())) {
+                const newKwEntry = {
+                    id: `kw-${kw.toLowerCase()}`,
+                    name: kw,
+                    category: 'keyword',
+                    subcategory: 'Language Keyword',
+                    title: `${kw} — VerScript Language Keyword`,
+                    summary: `Built-in keyword recognized by the compiler lexer.`,
+                    syntax: kw,
+                    parameters: 'None',
+                    returns: 'Language construct',
+                    example: `${kw}`,
+                    tags: [kw.toLowerCase(), 'keyword', 'language']
+                };
+                db.push(newKwEntry);
+                addedCount++;
+            }
         }
     }
 

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-22T16:55:57.292Z",
+  "generatedAt": "2026-10-24T17:21:43.581Z",
   "organization": "VerScript",
   "repos": [
     {
@@ -53,7 +53,7 @@
       "title": "v2.1.0 — Concurrency, Performance & Tooling",
       "description": "Next-generation concurrency features, LLVM/bytecode optimization, and package manager.",
       "state": "open",
-      "openIssues": 4,
+      "openIssues": 7,
       "closedIssues": 0,
       "htmlUrl": "https://github.com/VerScript/VerScript/milestone/2",
       "dueOn": null
@@ -125,7 +125,7 @@
       "title": "v2.1.0 — Interactive Exercises & Ecosystem Dashboard",
       "description": "Interactive coding challenges, code sharing, and live Project roadmap.",
       "state": "open",
-      "openIssues": 2,
+      "openIssues": 3,
       "closedIssues": 0,
       "htmlUrl": "https://github.com/VerScript/VerScript.github.io/milestone/2",
       "dueOn": null
@@ -149,13 +149,82 @@
       "title": "v2.1.0 — Interactive Tutorials & Cookbook",
       "description": "Real-world cookbook recipes and multi-language translation support.",
       "state": "open",
-      "openIssues": 1,
+      "openIssues": 2,
       "closedIssues": 0,
       "htmlUrl": "https://github.com/VerScript/help/milestone/2",
       "dueOn": null
     }
   ],
   "issues": [
+    {
+      "id": "VerScript-256",
+      "number": 256,
+      "title": "feat(compiler): Add first-class complex numbers (complex, real, imag, conj)",
+      "state": "open",
+      "status": "done",
+      "priority": "medium",
+      "repoId": "VerScript",
+      "repoName": "VerScript (Core Language & Compiler)",
+      "repoFullName": "VerScript/VerScript",
+      "repoColor": "#00FFCC",
+      "milestone": "v2.1.0 — Concurrency, Performance & Tooling",
+      "labels": [
+        "status:done",
+        "priority:medium",
+        "type:feature",
+        "area:compiler"
+      ],
+      "url": "https://github.com/VerScript/VerScript/issues/256",
+      "body": "## Summary\nNative complex arithmetic support and component extraction:\n- `complex(real, imag)`\n- `real(z)` / `z.real`\n- `imag(z)` / `z.imag`\n- `conj(z)`\n- Integration with `hypot`, `lerp`, and trigonometric functions.",
+      "createdAt": "2026-10-24T17:21:28Z",
+      "closedAt": null
+    },
+    {
+      "id": "VerScript-255",
+      "number": 255,
+      "title": "feat(compiler): Add terminal control subsystem (terminal.title, clear, flush, focus, split)",
+      "state": "open",
+      "status": "done",
+      "priority": "high",
+      "repoId": "VerScript",
+      "repoName": "VerScript (Core Language & Compiler)",
+      "repoFullName": "VerScript/VerScript",
+      "repoColor": "#00FFCC",
+      "milestone": "v2.1.0 — Concurrency, Performance & Tooling",
+      "labels": [
+        "status:done",
+        "priority:high",
+        "type:feature",
+        "area:compiler"
+      ],
+      "url": "https://github.com/VerScript/VerScript/issues/255",
+      "body": "## Summary\nProvide high-level console window control and buffer management keywords.\n\n### Keywords\n- `terminal.title(str)`: Application window and terminal tab titles\n- `terminal.clear()`: Screen buffer wipe\n- `flush()`: Immediate stream buffer flush\n- `focus(pane)`: Focus active pane",
+      "createdAt": "2026-10-24T17:21:25Z",
+      "closedAt": null
+    },
+    {
+      "id": "VerScript-254",
+      "number": 254,
+      "title": "feat(compiler): Implement 2D/3D graphics engine primitives (screen, world, render, draw, camera, light)",
+      "state": "open",
+      "status": "in-progress",
+      "priority": "critical",
+      "repoId": "VerScript",
+      "repoName": "VerScript (Core Language & Compiler)",
+      "repoFullName": "VerScript/VerScript",
+      "repoColor": "#00FFCC",
+      "milestone": "v2.1.0 — Concurrency, Performance & Tooling",
+      "labels": [
+        "status:in-progress",
+        "priority:critical",
+        "type:feature",
+        "area:compiler"
+      ],
+      "url": "https://github.com/VerScript/VerScript/issues/254",
+      "body": "## Summary\nImplement language-level primitives for 2D immediate-mode canvas drawing and 3D spatial simulation.\n\n### Keywords\n- `screen(w, h, title)`: Canvas surface descriptor\n- `world([gx, gy, gz])`: Physics spatial container\n- `draw rect/circle/line ?fill=#hex ?stroke=#hex`: Immediate 2D drawing\n-",
+      "createdAt": "2026-10-24T17:21:23Z",
+      "closedAt": null
+    },
     {
       "id": "VerScript-253",
       "number": 253,
@@ -641,6 +710,29 @@
       "closedAt": null
     },
     {
+      "id": "web-138",
+      "number": 138,
+      "title": "docs(academy): Expand documentation curriculum with Chapters 70-74",
+      "state": "open",
+      "status": "done",
+      "priority": "critical",
+      "repoId": "web",
+      "repoName": "VerScript Website & Academy",
+      "repoFullName": "VerScript/VerScript.github.io",
+      "repoColor": "#BD00FF",
+      "milestone": "v2.1.0 — Interactive Exercises & Ecosystem Dashboard",
+      "labels": [
+        "status:done",
+        "priority:critical",
+        "type:documentation",
+        "area:docs"
+      ],
+      "url": "https://github.com/VerScript/VerScript.github.io/issues/138",
+      "body": "## Summary\nAdded 5 comprehensive chapters to the VerScript Documentation Academy:\n- Chapter 70: FFI & Win32 Native Integration (extern)\n- Chapter 71: Range Strides (step) & Destructuring (unpack)\n- Chapter 72: Complex Numbers & Advanced Transcendental Math\n- Chapter 73: Terminal Subsystem & Console ",
+      "createdAt": "2026-10-24T17:21:31Z",
+      "closedAt": null
+    },
+    {
       "id": "web-132",
       "number": 132,
       "title": "feat(help): Launch interactive Help Center at verscript.github.io/help",
@@ -707,6 +799,28 @@
       "url": "https://github.com/VerScript/VerScript.github.io/issues/130",
       "body": "## Summary\nDeploy an interactive, glassmorphism Kanban Project Board at `verscript.github.io/project` tracking all issues, milestones, and roadmaps across the VerScript organization.",
       "createdAt": "2026-10-22T16:48:34Z",
+      "closedAt": null
+    },
+    {
+      "id": "help-3",
+      "number": 3,
+      "title": "docs(help): Expand help encyclopedia to 247 topics covering all 151 compiler keywords",
+      "state": "open",
+      "status": "done",
+      "priority": "critical",
+      "repoId": "help",
+      "repoName": "VerScript Help & Docs",
+      "repoFullName": "VerScript/help",
+      "repoColor": "#7928CA",
+      "milestone": "v2.1.0 — Interactive Tutorials & Cookbook",
+      "labels": [
+        "status:done",
+        "priority:critical",
+        "type:documentation"
+      ],
+      "url": "https://github.com/VerScript/help/issues/3",
+      "body": "## Summary\nDocumented all 151 compiler keywords, 32 standard libraries, and 34 error types in the official Knowledge Base with syntax, parameters, returns, paired keywords, and runnable examples.",
+      "createdAt": "2026-10-24T17:21:34Z",
       "closedAt": null
     },
     {

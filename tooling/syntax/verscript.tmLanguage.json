@@ -4,7 +4,8 @@
   "scopeName": "source.verscript",
   "fileTypes": [
     "vrs",
-    "lib.vrs"
+    "lib.vrs",
+    "h.vrs"
   ],
   "patterns": [
     {
@@ -23,6 +24,9 @@
       "include": "#booleans"
     },
     {
+      "include": "#constants-math"
+    },
+    {
       "include": "#keywords-declaration"
     },
     {
@@ -30,6 +34,15 @@
     },
     {
       "include": "#keywords-concurrency"
+    },
+    {
+      "include": "#keywords-terminal"
+    },
+    {
+      "include": "#keywords-graphics"
+    },
+    {
+      "include": "#keywords-complex"
     },
     {
       "include": "#types"
@@ -138,11 +151,19 @@
         }
       ]
     },
+    "constants-math": {
+      "patterns": [
+        {
+          "name": "constant.language.math.verscript",
+          "match": "\\b(pi|tau|phi|inf|infinity)\\b"
+        }
+      ]
+    },
     "keywords-declaration": {
       "patterns": [
         {
           "name": "keyword.declaration.verscript",
-          "match": "\\b(def|func|method|class|lib|DataType|alias)\\b"
+          "match": "\\b(def|func|method|class|lib|library|pkg|DataType|alias|enum|struct|construct|extern)\\b"
         },
         {
           "name": "storage.modifier.section.verscript",
@@ -150,15 +171,15 @@
         },
         {
           "name": "storage.modifier.visibility.verscript",
-          "match": "\\b(public|private)\\b"
+          "match": "\\b(public|private|export)\\b"
         },
         {
           "name": "storage.modifier.lifecycle.verscript",
-          "match": "\\b(inbound|outbound|outscope|temp|inst)\\b"
+          "match": "\\b(inbound|outbound|outscope|temp|inst|unpack)\\b"
         },
         {
           "name": "keyword.control.directive.verscript",
-          "match": "\\b(import|from|as|load|inject|del)\\b"
+          "match": "\\b(import|include|header|config|pragma|from|as|load|inject|del|extends)\\b"
         }
       ]
     },
@@ -166,11 +187,11 @@
       "patterns": [
         {
           "name": "keyword.control.conditional.verscript",
-          "match": "\\b(if|then|else|guard|match|with)\\b"
+          "match": "\\b(if|then|else|guard|match|with|case)\\b"
         },
         {
           "name": "keyword.control.repeat.verscript",
-          "match": "\\b(loop|repeat|while|until|cycle|for|by|step)\\b"
+          "match": "\\b(loop|repeat|while|until|cycle|for|by|step|iterate|in|yield)\\b"
         },
         {
           "name": "keyword.control.watch.verscript",
@@ -179,6 +200,10 @@
         {
           "name": "keyword.control.flow.verscript",
           "match": "\\b(reply|throw)\\b"
+        },
+        {
+          "name": "keyword.operator.logical.verscript",
+          "match": "\\b(and|or|not|nand|nor|xor|xnor|xand|is|even|odd)\\b"
         }
       ]
     },
@@ -186,7 +211,31 @@
       "patterns": [
         {
           "name": "keyword.control.concurrency.verscript",
-          "match": "\\b(display|prompt|emit|on|when|async|sync|send|recv|channel)\\b"
+          "match": "\\b(display|prompt|emit|on|when|async|sync|send|recv|channel|chan|close)\\b"
+        }
+      ]
+    },
+    "keywords-terminal": {
+      "patterns": [
+        {
+          "name": "support.class.terminal.verscript",
+          "match": "\\b(terminal|flush|focus|title|split)\\b"
+        }
+      ]
+    },
+    "keywords-graphics": {
+      "patterns": [
+        {
+          "name": "support.function.graphics.verscript",
+          "match": "\\b(render|screen|world|draw|spawn|camera|light|scene|rect|circle|line|box|sphere|fill|stroke|pixel|frame)\\b"
+        }
+      ]
+    },
+    "keywords-complex": {
+      "patterns": [
+        {
+          "name": "support.type.complex.verscript",
+          "match": "\\b(complex|real|imag|conj)\\b"
         }
       ]
     },

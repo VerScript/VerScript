@@ -71,5 +71,64 @@
       "display \"${1:Hello World}\" ?color=\"${2|cyan,green,yellow,red,purple,blue|}\""
     ],
     "description": "Display message with attribute formatting"
+  },
+  "For In Step Loop": {
+    "prefix": "forstep",
+    "body": [
+      "for ${1:i} in ${2:0} .. ${3:10} step ${4:2}:",
+      "    ${0:display ${1:i}}"
+    ],
+    "description": "For loop with range stride step"
+  },
+  "Dynamic Win32 FFI": {
+    "prefix": "extern",
+    "body": [
+      "extern \"${1:kernel32.dll}\" ${2:GetCurrentProcessId}()",
+      "set ${3:pid}: ${2:GetCurrentProcessId}()",
+      "${0:display \"Process: \" + ${3:pid}}"
+    ],
+    "description": "Dynamic Foreign Function Interface (FFI)"
+  },
+  "2D Canvas Drawing": {
+    "prefix": "draw",
+    "body": [
+      "draw ${1|rect(10, 10, 100, 50),circle(50, 50, 25),line(0, 0, 100, 100)|} ?fill=\"#${2:00FFCC}\""
+    ],
+    "description": "Immediate-mode 2D geometry drawing"
+  },
+  "Scene Rendering Pass": {
+    "prefix": "render",
+    "body": [
+      "screen(${1:800}, ${2:600}, \"${3:VerScript App}\")",
+      "set ${4:cam}: camera(60, 16/9, 0.1, 1000)",
+      "set ${5:scn}: scene()",
+      "render(${5:scn}, ${4:cam})"
+    ],
+    "description": "Render graphics scene to screen"
+  },
+  "Terminal Control": {
+    "prefix": "terminal",
+    "body": [
+      "terminal.title(\"${1:Application Title}\")",
+      "terminal.clear()",
+      "${0:flush()}"
+    ],
+    "description": "Terminal subsystem configuration"
+  },
+  "Complex Number": {
+    "prefix": "complex",
+    "body": [
+      "set ${1:z}: complex(${2:real}, ${3:imag})",
+      "set ${4:r}: real(${1:z})",
+      "set ${5:im}: imag(${1:z})"
+    ],
+    "description": "Complex number construction and components"
+  },
+  "Unpack Destructuring": {
+    "prefix": "unpack",
+    "body": [
+      "unpack [${1:a}, ${2:b}] : ${3:collection}"
+    ],
+    "description": "Destructuring unpack assignment"
   }
 }
