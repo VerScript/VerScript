@@ -1360,7 +1360,7 @@ void init_terminals(void) {
         strncpy(terminals[0].name, "default", 63);
         terminals[0].name[63] = '\0';
         terminals[0].is_open = 1;
-        strncpy(terminals[0].title, "Default Terminal", 127);
+        strncpy(terminals[0].title, "Default Terminal", 127); terminals[0].title[127] = '\0';
         terminal_count = 1;
     }
 }
@@ -1421,13 +1421,13 @@ static int active_render_mode = 0; // 0=none, 2=2D, 3=3D
 
 void init_render_surfaces(void) {
     if (render_surface_count == 0) {
-        strncpy(render_surfaces[0].name, "default2D", 63);
+        strncpy(render_surfaces[0].name, "default2D", 63); render_surfaces[0].name[63] = '\0';
         render_surfaces[0].kind = 2;
         render_surfaces[0].is_open = 1;
         render_surfaces[0].width = 800;
         render_surfaces[0].height = 600;
 
-        strncpy(render_surfaces[1].name, "default3D", 63);
+        strncpy(render_surfaces[1].name, "default3D", 63); render_surfaces[1].name[63] = '\0';
         render_surfaces[1].kind = 3;
         render_surfaces[1].is_open = 1;
         render_surfaces[1].width = 800;
@@ -1458,7 +1458,7 @@ void register_render_surface(const char *name, int kind) {
         return;
     }
     if (render_surface_count < MAX_SURFACES) {
-        strncpy(render_surfaces[render_surface_count].name, name, 63);
+        strncpy(render_surfaces[render_surface_count].name, name, 63); render_surfaces[render_surface_count].name[63] = '\0';
         render_surfaces[render_surface_count].kind = kind;
         render_surfaces[render_surface_count].is_open = 1;
         render_surfaces[render_surface_count].width = 800;
@@ -1507,12 +1507,12 @@ int register_extern_function(const char *dll, const char *func, const char *ret_
     }
     if (extern_def_count >= MAX_EXTERNS) return -1;
     ExternDef *ed = &extern_defs[extern_def_count++];
-    strncpy(ed->dll_name, dll, 127);
-    strncpy(ed->func_name, func, 63);
-    strncpy(ed->return_type, ret_type ? ret_type : "num", 31);
+    strncpy(ed->dll_name, dll, 127); ed->dll_name[127] = '\0';
+    strncpy(ed->func_name, func, 63); ed->func_name[63] = '\0';
+    strncpy(ed->return_type, ret_type ? ret_type : "num", 31); ed->return_type[31] = '\0';
     ed->param_count = p_count;
     for (int i = 0; i < p_count; i++) {
-        strncpy(ed->param_types[i], param_types[i], 31);
+        strncpy(ed->param_types[i], param_types[i], 31); ed->param_types[i][31] = '\0';
     }
     ed->proc_ptr = NULL;
     ed->module_handle = NULL;
@@ -1579,7 +1579,7 @@ void parse_extern_decl(const char *decl_str, int line_num) {
                 ptype[pt] = '\0';
             }
             if (p_count < 8) {
-                strncpy(params[p_count++], ptype, 31);
+                strncpy(params[p_count], ptype, 31); params[p_count][31] = '\0'; p_count++;
             }
             while (isspace((unsigned char)*p)) p++;
             if (*p == ',') p++;
@@ -5025,8 +5025,8 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
                         freeToken(&name_tok);
                     }
                 }
-                char c_name[64] = ""; strncpy(c_name, cd_static->name, 63);
-                char m_name[64] = ""; strncpy(m_name, mem.value, 63);
+                char c_name[64] = ""; strncpy(c_name, cd_static->name, 63); c_name[63] = '\0';
+                char m_name[64] = ""; strncpy(m_name, mem.value, 63); m_name[63] = '\0';
                 freeToken(&mem); freeToken(&t);
                 throw_error("UndefinedVariableError", "Class '%s' has no static property '%s' on line %d", c_name, m_name, current_executing_line);
             }
@@ -6373,9 +6373,9 @@ void parse_and_register_routine(const char *def_line, int body_start, int body_e
             hp->kind = (kind == ROUTINE_METHOD ? 1 : 0);
             hp->param_count = r->param_count;
             for (int k = 0; k < r->param_count; k++) {
-                strncpy(hp->params[k], r->params[k], 63);
+                strncpy(hp->params[k], r->params[k], 63); hp->params[k][63] = '\0';
             }
-            strncpy(hp->header_name, active_header_name[0] ? active_header_name : "Header", 63);
+            strncpy(hp->header_name, active_header_name[0] ? active_header_name : "Header", 63); hp->header_name[63] = '\0';
             hp->is_implemented = 0;
             hp->line_num = line_num;
         }
@@ -6555,7 +6555,7 @@ void execute_line(const char *text, int line_num) {
             Token path_tok = getNextToken(&cursor);
             char inc_path[256] = "";
             if (path_tok.type == TOKEN_STRING || path_tok.type == TOKEN_IDENTIFIER) {
-                if (path_tok.value) strncpy(inc_path, path_tok.value, 255);
+                if (path_tok.value) strncpy(inc_path, path_tok.value, 255); inc_path[255] = '\0';
             } else {
                 freeToken(&path_tok);
                 throw_error("SyntaxError", "Expected file path after 'include' on line %d", line_num);
@@ -6782,7 +6782,7 @@ void execute_line(const char *text, int line_num) {
             register_terminal(name_tok.value);
             Variable *v = set_var_scoped(name_tok.value, line_num);
             v->type = VAR_TERMINAL;
-            strncpy(v->declared_type, "terminal", 63);
+            strncpy(v->declared_type, "terminal", 63); v->declared_type[63] = '\0';
             freeToken(&name_tok);
             return;
         }
@@ -6795,7 +6795,7 @@ void execute_line(const char *text, int line_num) {
             register_render_surface(name_tok.value, 2);
             Variable *v = set_var_scoped(name_tok.value, line_num);
             v->type = VAR_SCREEN;
-            strncpy(v->declared_type, "screen", 63);
+            strncpy(v->declared_type, "screen", 63); v->declared_type[63] = '\0';
             freeToken(&name_tok);
             return;
         }
@@ -6808,7 +6808,7 @@ void execute_line(const char *text, int line_num) {
             register_render_surface(name_tok.value, 3);
             Variable *v = set_var_scoped(name_tok.value, line_num);
             v->type = VAR_WORLD;
-            strncpy(v->declared_type, "world", 63);
+            strncpy(v->declared_type, "world", 63); v->declared_type[63] = '\0';
             freeToken(&name_tok);
             return;
         }
@@ -6898,11 +6898,11 @@ void execute_line(const char *text, int line_num) {
         else if (t.type == TOKEN_EXTERN) {
             Token dll_tok = getNextToken(&cursor);
             char dll_name[128] = "";
-            if (dll_tok.value) strncpy(dll_name, dll_tok.value, 127);
+            if (dll_tok.value) strncpy(dll_name, dll_tok.value, 127); dll_name[127] = '\0';
             freeToken(&dll_tok);
             Token fn_tok = getNextToken(&cursor);
             char fn_name[64] = "";
-            if (fn_tok.value) strncpy(fn_name, fn_tok.value, 63);
+            if (fn_tok.value) strncpy(fn_name, fn_tok.value, 63); fn_name[63] = '\0';
             freeToken(&fn_tok);
             Token lp = getNextToken(&cursor); freeToken(&lp);
             char ptypes[8][32];
@@ -6912,7 +6912,7 @@ void execute_line(const char *text, int line_num) {
                 if (pt.type == TOKEN_RPAREN || pt.type == TOKEN_EOF) { freeToken(&pt); break; }
                 freeToken(&pt);
                 Token arg_t = getNextToken(&cursor);
-                if (arg_t.value) strncpy(ptypes[pcount++], arg_t.value, 31);
+                if (arg_t.value) { strncpy(ptypes[pcount], arg_t.value, 31); ptypes[pcount][31] = '\0'; pcount++; }
                 freeToken(&arg_t);
                 Token sep = peekToken(&cursor);
                 if (sep.type == TOKEN_COMMA) { freeToken(&sep); Token c = getNextToken(&cursor); freeToken(&c); }
@@ -6925,7 +6925,7 @@ void execute_line(const char *text, int line_num) {
                 freeToken(&col);
                 Token c = getNextToken(&cursor); freeToken(&c);
                 Token rt = getNextToken(&cursor);
-                if (rt.value) strncpy(ret_type, rt.value, 31);
+                if (rt.value) strncpy(ret_type, rt.value, 31); ret_type[31] = '\0';
                 freeToken(&rt);
             } else freeToken(&col);
             register_extern_function(dll_name, fn_name, ret_type, ptypes, pcount);
@@ -6943,9 +6943,9 @@ void execute_line(const char *text, int line_num) {
                     int rest_flag = 0;
                     if (vt.value && strncmp(vt.value, "...", 3) == 0) {
                         rest_flag = 1;
-                        strncpy(var_names[var_c], vt.value + 3, 63);
+                        strncpy(var_names[var_c], vt.value + 3, 63); var_names[var_c][63] = '\0';
                     } else if (vt.value) {
-                        strncpy(var_names[var_c], vt.value, 63);
+                        strncpy(var_names[var_c], vt.value, 63); var_names[var_c][63] = '\0';
                     }
                     is_rest[var_c] = rest_flag;
                     var_c++;
@@ -7071,7 +7071,7 @@ void execute_line(const char *text, int line_num) {
                 }
             } else if (err_tok.type == TOKEN_STRING) {
                 char combined_msg[512] = "";
-                strncpy(combined_msg, err_tok.value ? err_tok.value : "User thrown error", 511);
+                strncpy(combined_msg, err_tok.value ? err_tok.value : "User thrown error", 511); combined_msg[511] = '\0';
                 Token plus = peekToken(&cursor);
                 if (plus.type == TOKEN_PLUS) {
                     freeToken(&plus);
@@ -7333,7 +7333,7 @@ void execute_line(const char *text, int line_num) {
                 mod_path[sizeof(mod_path) - 1] = '\0';
                 Token next_p = peekToken(&cursor);
                 char last_part[64] = "";
-                strncpy(last_part, first_part.value, 63);
+                strncpy(last_part, first_part.value, 63); last_part[63] = '\0';
                 while (next_p.type == TOKEN_DOT) {
                     freeToken(&next_p);
                     Token dot = getNextToken(&cursor); freeToken(&dot);
@@ -7341,7 +7341,7 @@ void execute_line(const char *text, int line_num) {
                     if (part.type == TOKEN_IDENTIFIER && part.value) {
                         strncat(mod_path, ".", sizeof(mod_path) - strlen(mod_path) - 1);
                         strncat(mod_path, part.value, sizeof(mod_path) - strlen(mod_path) - 1);
-                        strncpy(last_part, part.value, 63);
+                        strncpy(last_part, part.value, 63); last_part[63] = '\0';
                     }
                     freeToken(&part);
                     next_p = peekToken(&cursor);
@@ -7942,7 +7942,7 @@ void execute_block(int start, int end) {
                             EventListener *el = &event_listeners[event_listener_count++];
                             memset(el, 0, sizeof(EventListener));
                             el->type = EVENT_EXIT;
-                            strncpy(el->event_name, "exit", 63);
+                            strncpy(el->event_name, "exit", 63); el->event_name[63] = '\0';
                             el->start_line = block_start;
                             el->end_line = block_end;
                         }
@@ -7951,7 +7951,7 @@ void execute_block(int start, int end) {
                             EventListener *el = &event_listeners[event_listener_count++];
                             memset(el, 0, sizeof(EventListener));
                             el->type = EVENT_ERROR;
-                            strncpy(el->event_name, "error", 63);
+                            strncpy(el->event_name, "error", 63); el->event_name[63] = '\0';
                             el->start_line = block_start;
                             el->end_line = block_end;
                         }
@@ -7960,7 +7960,7 @@ void execute_block(int start, int end) {
                             EventListener *el = &event_listeners[event_listener_count++];
                             memset(el, 0, sizeof(EventListener));
                             el->type = EVENT_COMPLETE;
-                            strncpy(el->event_name, "complete", 63);
+                            strncpy(el->event_name, "complete", 63); el->event_name[63] = '\0';
                             const char *p = ev_cursor + 8;
                             if (*p == ':') p++;
                             while (isspace((unsigned char)*p)) p++;
@@ -7975,7 +7975,7 @@ void execute_block(int start, int end) {
                             memset(el, 0, sizeof(EventListener));
                             el->type = EVENT_INTERVAL;
                             el->interval_ms = ms;
-                            strncpy(el->event_name, "interval", 63);
+                            strncpy(el->event_name, "interval", 63); el->event_name[63] = '\0';
                             el->start_line = block_start;
                             el->end_line = block_end;
                         }
@@ -7986,7 +7986,7 @@ void execute_block(int start, int end) {
                             memset(el, 0, sizeof(EventListener));
                             el->type = EVENT_TIMEOUT;
                             el->interval_ms = ms;
-                            strncpy(el->event_name, "timeout", 63);
+                            strncpy(el->event_name, "timeout", 63); el->event_name[63] = '\0';
                             el->start_line = block_start;
                             el->end_line = block_end;
                         }
@@ -8013,7 +8013,7 @@ void execute_block(int start, int end) {
                         EventListener *el = &event_listeners[event_listener_count++];
                         memset(el, 0, sizeof(EventListener));
                         el->type = EVENT_WHEN;
-                        strncpy(el->cond_expr, cond_str, 255);
+                        strncpy(el->cond_expr, cond_str, 255); el->cond_expr[255] = '\0';
                         el->start_line = block_start;
                         el->end_line = block_end;
                     }
@@ -8240,7 +8240,7 @@ void execute_block(int start, int end) {
                         } else {
                             sscanf(c, "%31s", em);
                         }
-                        strncpy(compiler_config.error_mode, em, 31);
+                        strncpy(compiler_config.error_mode, em, 31); compiler_config.error_mode[31] = '\0';
                     } else if (strcmp(k_name, "timeout_ms") == 0) {
                         compiler_config.timeout_ms = atoi(c);
                     } else if (strcmp(k_name, "target_version") == 0) {
@@ -8253,7 +8253,7 @@ void execute_block(int start, int end) {
                         } else {
                             sscanf(c, "%31s", tv);
                         }
-                        strncpy(compiler_config.target_version, tv, 31);
+                        strncpy(compiler_config.target_version, tv, 31); compiler_config.target_version[31] = '\0';
                     } else if (strcmp(k_name, "log_level") == 0) {
                         char ll[32] = "";
                         if (*c == '"' || *c == '\'') {
@@ -8264,7 +8264,7 @@ void execute_block(int start, int end) {
                         } else {
                             sscanf(c, "%31s", ll);
                         }
-                        strncpy(compiler_config.log_level, ll, 31);
+                        strncpy(compiler_config.log_level, ll, 31); compiler_config.log_level[31] = '\0';
                     }
                 }
                 i = block_end + 1;
@@ -8389,7 +8389,7 @@ void execute_block(int start, int end) {
                 Variable *v = set_var(enum_name);
                 v->type = VAR_ENTITY;
                 v->entity_val = ent;
-                strncpy(v->declared_type, "enum", 63);
+                strncpy(v->declared_type, "enum", 63); v->declared_type[63] = '\0';
 
                 i = block_end + 1;
                 while (i <= end && lines[i].text[0] == '\0') i++;
@@ -8447,7 +8447,7 @@ void execute_block(int start, int end) {
                             while (isspace((unsigned char)*t_part)) t_part++;
                             int tlen = strlen(t_part);
                             while (tlen > 0 && isspace((unsigned char)t_part[tlen - 1])) t_part[--tlen] = '\0';
-                            strncpy(f_type, t_part, 63);
+                            strncpy(f_type, t_part, 63); f_type[63] = '\0';
                         }
                         int flen = strlen(token);
                         while (flen > 0 && isspace((unsigned char)token[flen - 1])) token[--flen] = '\0';
@@ -8479,7 +8479,7 @@ void execute_block(int start, int end) {
                                 while (isspace((unsigned char)*t_part)) t_part++;
                                 int tlen = strlen(t_part);
                                 while (tlen > 0 && isspace((unsigned char)t_part[tlen - 1])) t_part[--tlen] = '\0';
-                                strncpy(f_type, t_part, 63);
+                                strncpy(f_type, t_part, 63); f_type[63] = '\0';
                             }
                             int flen = strlen(token);
                             while (flen > 0 && isspace((unsigned char)token[flen - 1])) token[--flen] = '\0';
@@ -8739,7 +8739,7 @@ void execute_block(int start, int end) {
                         if (library_count >= MAX_LIBRARIES) throw_error("SystemError", "Max libraries exceeded on line %d", ln->line_num);
                         LibraryDef *sub_lib = &libraries[library_count++];
                         memset(sub_lib, 0, sizeof(LibraryDef));
-                        strncpy(sub_lib->name, compound_sub_name, 63);
+                        strncpy(sub_lib->name, compound_sub_name, 63); sub_lib->name[63] = '\0';
 
                         int sub_sec = 0;
                         LibraryDef *saved_current_sub = current_library;
@@ -9603,7 +9603,7 @@ void execute_block(int start, int end) {
                 }
                 loop_var[v_idx] = '\0';
             } else {
-                strncpy(expr_part, cursor, sizeof(expr_part) - 1);
+                strncpy(expr_part, cursor, sizeof(expr_part) - 1); expr_part[sizeof(expr_part) - 1] = '\0';
                 char *colon = strchr(expr_part, ':');
                 if (colon) *colon = '\0';
             }
@@ -10021,7 +10021,7 @@ int is_library_loaded(const char *name) {
 
 void mark_library_loaded(const char *name) {
     if (loaded_library_count < 64) {
-        strncpy(loaded_libraries[loaded_library_count++], name, 127);
+        strncpy(loaded_libraries[loaded_library_count], name, 127); loaded_libraries[loaded_library_count][127] = '\0'; loaded_library_count++;
         loaded_libraries[loaded_library_count - 1][127] = '\0';
     }
 }
@@ -10038,7 +10038,7 @@ int is_header_loaded(const char *name) {
 
 void mark_header_loaded(const char *name) {
     if (loaded_header_count < 64) {
-        strncpy(loaded_headers[loaded_header_count++], name, 255);
+        strncpy(loaded_headers[loaded_header_count], name, 255); loaded_headers[loaded_header_count][255] = '\0'; loaded_header_count++;
         loaded_headers[loaded_header_count - 1][255] = '\0';
     }
 }
@@ -10220,21 +10220,21 @@ void display_terminal_help(const char *topic) {
         if (isalnum((unsigned char)ch) || ch == '_' || ch == '-') {
             clean_topic[ct_idx++] = tolower((unsigned char)ch);
         } else if (ch == '+') {
-            strcpy(clean_topic + ct_idx, "plus"); ct_idx += 4;
+            memmove(clean_topic + ct_idx, "plus", 5); ct_idx += 4;
         } else if (ch == '-') {
-            strcpy(clean_topic + ct_idx, "minus"); ct_idx += 5;
+            memmove(clean_topic + ct_idx, "minus", 6); ct_idx += 5;
         } else if (ch == '*') {
-            strcpy(clean_topic + ct_idx, "multiply"); ct_idx += 8;
+            memmove(clean_topic + ct_idx, "multiply", 9); ct_idx += 8;
         } else if (ch == '/') {
-            strcpy(clean_topic + ct_idx, "divide"); ct_idx += 6;
+            memmove(clean_topic + ct_idx, "divide", 7); ct_idx += 6;
         } else if (ch == '%') {
-            strcpy(clean_topic + ct_idx, "modulo"); ct_idx += 6;
+            memmove(clean_topic + ct_idx, "modulo", 7); ct_idx += 6;
         } else if (ch == '?') {
-            strcpy(clean_topic + ct_idx, "question"); ct_idx += 8;
+            memmove(clean_topic + ct_idx, "question", 9); ct_idx += 8;
         } else if (ch == '.') {
-            strcpy(clean_topic + ct_idx, "dot"); ct_idx += 3;
+            memmove(clean_topic + ct_idx, "dot", 4); ct_idx += 3;
         } else if (ch == ':') {
-            strcpy(clean_topic + ct_idx, "colon"); ct_idx += 5;
+            memmove(clean_topic + ct_idx, "colon", 6); ct_idx += 5;
         }
     }
     clean_topic[ct_idx] = '\0';
