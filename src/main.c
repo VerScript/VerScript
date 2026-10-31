@@ -7964,7 +7964,7 @@ void execute_block(int start, int end) {
                             const char *p = ev_cursor + 8;
                             if (*p == ':') p++;
                             while (isspace((unsigned char)*p)) p++;
-                            if (*p != '\0') strncpy(el->param_name, p, 63);
+                            if (*p != '\0') strncpy(el->param_name, p, 63); el->param_name[63] = '\0';
                             el->start_line = block_start;
                             el->end_line = block_end;
                         }
@@ -8000,8 +8000,8 @@ void execute_block(int start, int end) {
                             EventListener *el = &event_listeners[event_listener_count++];
                             memset(el, 0, sizeof(EventListener));
                             el->type = EVENT_CUSTOM;
-                            strncpy(el->event_name, ev_name, 63);
-                            if (p_name[0] != '\0') strncpy(el->param_name, p_name, 63);
+                            strncpy(el->event_name, ev_name, 63); el->event_name[63] = '\0';
+                            if (p_name[0] != '\0') strncpy(el->param_name, p_name, 63); el->param_name[63] = '\0';
                             el->start_line = block_start;
                             el->end_line = block_end;
                         }
@@ -8326,7 +8326,7 @@ void execute_block(int start, int end) {
                         }
                         int tlen = strlen(token);
                         while (tlen > 0 && isspace((unsigned char)token[tlen - 1])) token[--tlen] = '\0';
-                        strncpy(m_name, token, 63);
+                        strncpy(m_name, token, 63); m_name[63] = '\0';
                         if (m_name[0] != '\0') {
                             if (ent->dynamic_count >= ent->dynamic_capacity) {
                                 int new_cap = ent->dynamic_capacity * 2;
@@ -8365,7 +8365,7 @@ void execute_block(int start, int end) {
                             }
                             int tlen = strlen(token);
                             while (tlen > 0 && isspace((unsigned char)token[tlen - 1])) token[--tlen] = '\0';
-                            strncpy(m_name, token, 63);
+                            strncpy(m_name, token, 63); m_name[63] = '\0';
                             if (m_name[0] != '\0') {
                                 if (ent->dynamic_count >= ent->dynamic_capacity) {
                                     int new_cap = ent->dynamic_capacity * 2;
@@ -8451,11 +8451,11 @@ void execute_block(int start, int end) {
                         }
                         int flen = strlen(token);
                         while (flen > 0 && isspace((unsigned char)token[flen - 1])) token[--flen] = '\0';
-                        strncpy(f_name, token, 63);
+                        strncpy(f_name, token, 63); f_name[63] = '\0';
                         if (f_name[0] != '\0') {
                             int pidx = cd->param_count++;
-                            strncpy(cd->params[pidx], f_name, 63);
-                            if (f_type[0] != '\0') strncpy(cd->param_types[pidx], f_type, 63);
+                            strncpy(cd->params[pidx], f_name, 63); cd->params[pidx][63] = '\0';
+                            if (f_type[0] != '\0') strncpy(cd->param_types[pidx], f_type, 63); cd->param_types[pidx][63] = '\0';
                         }
                         token = strtok(NULL, ",");
                     }
@@ -8483,11 +8483,11 @@ void execute_block(int start, int end) {
                             }
                             int flen = strlen(token);
                             while (flen > 0 && isspace((unsigned char)token[flen - 1])) token[--flen] = '\0';
-                            strncpy(f_name, token, 63);
+                            strncpy(f_name, token, 63); f_name[63] = '\0';
                             if (f_name[0] != '\0') {
                                 int pidx = cd->param_count++;
-                                strncpy(cd->params[pidx], f_name, 63);
-                                if (f_type[0] != '\0') strncpy(cd->param_types[pidx], f_type, 63);
+                                strncpy(cd->params[pidx], f_name, 63); cd->params[pidx][63] = '\0';
+                                if (f_type[0] != '\0') strncpy(cd->param_types[pidx], f_type, 63); cd->param_types[pidx][63] = '\0';
                             }
                             token = strtok(NULL, ",");
                         }
