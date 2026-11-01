@@ -6555,7 +6555,7 @@ void execute_line(const char *text, int line_num) {
             Token path_tok = getNextToken(&cursor);
             char inc_path[256] = "";
             if (path_tok.type == TOKEN_STRING || path_tok.type == TOKEN_IDENTIFIER) {
-                if (path_tok.value) strncpy(inc_path, path_tok.value, 255); inc_path[255] = '\0';
+                if (path_tok.value) { strncpy(inc_path, path_tok.value, 255); inc_path[255] = '\0'; }
             } else {
                 freeToken(&path_tok);
                 throw_error("SyntaxError", "Expected file path after 'include' on line %d", line_num);
@@ -6898,11 +6898,11 @@ void execute_line(const char *text, int line_num) {
         else if (t.type == TOKEN_EXTERN) {
             Token dll_tok = getNextToken(&cursor);
             char dll_name[128] = "";
-            if (dll_tok.value) strncpy(dll_name, dll_tok.value, 127); dll_name[127] = '\0';
+            if (dll_tok.value) { strncpy(dll_name, dll_tok.value, 127); dll_name[127] = '\0'; }
             freeToken(&dll_tok);
             Token fn_tok = getNextToken(&cursor);
             char fn_name[64] = "";
-            if (fn_tok.value) strncpy(fn_name, fn_tok.value, 63); fn_name[63] = '\0';
+            if (fn_tok.value) { strncpy(fn_name, fn_tok.value, 63); fn_name[63] = '\0'; }
             freeToken(&fn_tok);
             Token lp = getNextToken(&cursor); freeToken(&lp);
             char ptypes[8][32];
@@ -6925,7 +6925,7 @@ void execute_line(const char *text, int line_num) {
                 freeToken(&col);
                 Token c = getNextToken(&cursor); freeToken(&c);
                 Token rt = getNextToken(&cursor);
-                if (rt.value) strncpy(ret_type, rt.value, 31); ret_type[31] = '\0';
+                if (rt.value) { strncpy(ret_type, rt.value, 31); ret_type[31] = '\0'; }
                 freeToken(&rt);
             } else freeToken(&col);
             register_extern_function(dll_name, fn_name, ret_type, ptypes, pcount);
@@ -7964,7 +7964,7 @@ void execute_block(int start, int end) {
                             const char *p = ev_cursor + 8;
                             if (*p == ':') p++;
                             while (isspace((unsigned char)*p)) p++;
-                            if (*p != '\0') strncpy(el->param_name, p, 63); el->param_name[63] = '\0';
+                            if (*p != '\0') { strncpy(el->param_name, p, 63); el->param_name[63] = '\0'; }
                             el->start_line = block_start;
                             el->end_line = block_end;
                         }
@@ -8001,7 +8001,7 @@ void execute_block(int start, int end) {
                             memset(el, 0, sizeof(EventListener));
                             el->type = EVENT_CUSTOM;
                             strncpy(el->event_name, ev_name, 63); el->event_name[63] = '\0';
-                            if (p_name[0] != '\0') strncpy(el->param_name, p_name, 63); el->param_name[63] = '\0';
+                            if (p_name[0] != '\0') { strncpy(el->param_name, p_name, 63); el->param_name[63] = '\0'; }
                             el->start_line = block_start;
                             el->end_line = block_end;
                         }
@@ -8455,7 +8455,7 @@ void execute_block(int start, int end) {
                         if (f_name[0] != '\0') {
                             int pidx = cd->param_count++;
                             strncpy(cd->params[pidx], f_name, 63); cd->params[pidx][63] = '\0';
-                            if (f_type[0] != '\0') strncpy(cd->param_types[pidx], f_type, 63); cd->param_types[pidx][63] = '\0';
+                            if (f_type[0] != '\0') { strncpy(cd->param_types[pidx], f_type, 63); cd->param_types[pidx][63] = '\0'; }
                         }
                         token = strtok(NULL, ",");
                     }
@@ -8487,7 +8487,7 @@ void execute_block(int start, int end) {
                             if (f_name[0] != '\0') {
                                 int pidx = cd->param_count++;
                                 strncpy(cd->params[pidx], f_name, 63); cd->params[pidx][63] = '\0';
-                                if (f_type[0] != '\0') strncpy(cd->param_types[pidx], f_type, 63); cd->param_types[pidx][63] = '\0';
+                                if (f_type[0] != '\0') { strncpy(cd->param_types[pidx], f_type, 63); cd->param_types[pidx][63] = '\0'; }
                             }
                             token = strtok(NULL, ",");
                         }
