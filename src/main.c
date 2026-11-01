@@ -9284,7 +9284,148 @@ void execute_block(int start, int end) {
             }
             i = block_end + 1;
         }
-        else if (strncmp(effective_text, "if ", 3) == 0) {
+                else if (strncmp(effective_text, "for ", 4) == 0) {
+            int block_start = i + 1;
+            int block_end = i;
+            while (block_end + 1 <= end) {
+                Line *next = &lines[block_end + 1];
+                if (next->text[0] == '\0' || next->text[0] == '!') {
+                    block_end++;
+                    continue;
+                }
+                if (next->indent > line->indent) {
+                    block_end++;
+                } else {
+                    break;
+                }
+            }
+
+            const char *cursor = effective_text + 4;
+            while (isspace((unsigned char)*cursor)) cursor++;
+            const char *id_start = cursor;
+            while (isalnum((unsigned char)*cursor) || *cursor == '_') cursor++;
+            int id_len = cursor - id_start;
+            if (id_len == 0) {
+                throw_error("SyntaxError", "Expected identifier after for on line %d", line->line_num);
+            }
+            if (id_len >= 64) id_len = 63;
+            char var_name[64];
+            strncpy(var_name, id_start, id_len);
+            var_name[id_len] = '\0';
+
+            while (isspace((unsigned char)*cursor)) cursor++;
+            if (strncmp(cursor, "in", 2) != 0 || !isspace((unsigned char)cursor[2])) {
+                throw_error("SyntaxError", "Expected 'in' after identifier in for loop on line %d", line->line_num);
+            }
+            cursor += 2;
+            while (isspace((unsigned char)*cursor)) cursor++;
+
+            const char *dots = strstr(cursor, "..");
+            if (dots) {
+                int start_len = dots - cursor;
+                char start_buf[128];
+                if (start_len >= 128) start_len = 127;
+                strncpy(start_buf, cursor, start_len);
+                start_buf[start_len] = '\0';
+
+                const char *sc = start_buf;
+                char *s_out = NULL; int s_type = VAR_INT;
+                int start_val = evaluate_expression(&sc, &s_out, &s_type);
+                if (s_out) { untrack_alloc(s_out); free(s_out); }
+
+                cursor = dots + 2;
+                while (isspace((unsigned char)*cursor)) cursor++;
+
+                const char *step_ptr = strstr(cursor, "step");
+                const char *colon_ptr = strchr(cursor, ':');
+                int end_len = 0;
+                if (step_ptr && (!colon_ptr || step_ptr < colon_ptr)) {
+                    end_len = step_ptr - cursor;
+                } else if (colon_ptr) {
+                    end_len = colon_ptr - cursor;
+                } else {
+                    end_len = strlen(cursor);
+                }
+
+                char end_buf[128];
+                if (end_len >= 128) end_len = 127;
+                strncpy(end_buf, cursor, end_len);
+                end_buf[end_len] = '\0';
+
+                const char *ec = end_buf;
+                char *e_out = NULL; int e_type = VAR_INT;
+                int end_val = evaluate_expression(&ec, &e_out, &e_type);
+                if (e_out) { untrack_alloc(e_out); free(e_out); }
+
+                int step_val = (start_val <= end_val) ? 1 : -1;
+                if (step_ptr) {
+                    cursor = step_ptr + 4;
+                    while (isspace((unsigned char)*cursor)) cursor++;
+                    char step_buf[128];
+                    int slen = 0;
+                    if (colon_ptr && colon_ptr > cursor) slen = colon_ptr - cursor;
+                    else slen = strlen(cursor);
+                    if (slen >= 128) slen = 127;
+                    strncpy(step_buf, cursor, slen);
+                    step_buf[slen] = '\0';
+
+                    const char *stc = step_buf;
+                    char *st_out = NULL; int st_type = VAR_INT;
+                    step_val = evaluate_expression(&stc, &st_out, &st_type);
+                    if (st_out) { untrack_alloc(st_out); free(st_out); }
+                    if (step_val == 0) step_val = 1;
+                }
+
+                Variable *v = set_var(var_name);
+                if (step_val > 0) {
+                    for (int idx_val = start_val; idx_val <= end_val; idx_val += step_val) {
+                        if (current_reply.has_replied) break;
+                        v->type = VAR_INT;
+                        v->int_val = idx_val;
+                        if (v->string_val) { free(v->string_val); v->string_val = NULL; }
+                        execute_block(block_start, block_end);
+                        if (current_reply.has_replied) break;
+                        if (active_watch.active && active_watch.triggered) break;
+                    }
+                } else {
+                    for (int idx_val = start_val; idx_val >= end_val; idx_val += step_val) {
+                        if (current_reply.has_replied) break;
+                        v->type = VAR_INT;
+                        v->int_val = idx_val;
+                        if (v->string_val) { free(v->string_val); v->string_val = NULL; }
+                        execute_block(block_start, block_end);
+                        if (current_reply.has_replied) break;
+                        if (active_watch.active && active_watch.triggered) break;
+                    }
+                }
+            } else {
+                const char *colon_ptr = strchr(cursor, ':');
+                int arr_len = colon_ptr ? (colon_ptr - cursor) : strlen(cursor);
+                char arr_buf[128];
+                if (arr_len >= 128) arr_len = 127;
+                strncpy(arr_buf, cursor, arr_len);
+                arr_buf[arr_len] = '\0';
+
+                char *atrim = arr_buf;
+                while (isspace((unsigned char)*atrim)) atrim++;
+                char *aend = atrim + strlen(atrim) - 1;
+                while (aend > atrim && isspace((unsigned char)*aend)) { *aend = '\0'; aend--; }
+
+                Variable *arr_var = get_var(atrim);
+                if (arr_var && arr_var->type == VAR_ARRAY && arr_var->array_val) {
+                    Variable *v = set_var(var_name);
+                    for (int ai = 0; ai < arr_var->array_val->count; ai++) {
+                        if (current_reply.has_replied) break;
+                        copy_variable(v, &arr_var->array_val->items[ai]);
+                        execute_block(block_start, block_end);
+                        if (current_reply.has_replied) break;
+                        if (active_watch.active && active_watch.triggered) break;
+                    }
+                }
+            }
+            i = block_end + 1;
+        }
+else if (strncmp(effective_text, "if ", 3) == 0) {
             const char *cursor = effective_text + 3;
             const char *then_ptr = strstr(cursor, " then");
             if (!then_ptr) {
@@ -9949,6 +10090,7 @@ void execute_block(int start, int end) {
             strncmp(effective_text, "async ", 6) == 0 ||
             strncmp(effective_text, "loop ", 5) == 0 || strcmp(effective_text, "loop") == 0 ||
             strncmp(effective_text, "iterate ", 8) == 0 ||
+            strncmp(effective_text, "for ", 4) == 0 ||
             strncmp(effective_text, "if ", 3) == 0 ||
             strncmp(effective_text, "while ", 6) == 0 ||
             strncmp(effective_text, "until ", 6) == 0 ||
@@ -10418,7 +10560,7 @@ void start_repl(void) {
         int len = strlen(trimmed);
         int is_block_starter = 0;
         if (len > 0 && trimmed[len - 1] == ':') is_block_starter = 1;
-        if (strncmp(trimmed, "loop ", 5) == 0 || strncmp(trimmed, "iterate ", 8) == 0 ||
+        if (strncmp(trimmed, "loop ", 5) == 0 || strncmp(trimmed, "iterate ", 8) == 0 || strncmp(trimmed, "for ", 4) == 0 ||
             strncmp(trimmed, "if ", 3) == 0 || strncmp(trimmed, "do", 2) == 0 ||
             strncmp(trimmed, "while ", 6) == 0 || strncmp(trimmed, "until ", 6) == 0 ||
             strncmp(trimmed, "def func", 8) == 0 || strncmp(trimmed, "func ", 5) == 0 ||
@@ -10445,7 +10587,7 @@ void start_repl(void) {
             block_buf[0] = '\0';
             int is_statement = 0;
             const char *stmt_keywords[] = {
-                "set ", "display ", "prompt ", "loop ", "iterate ", "if ", "while ", "until ",
+                "set ", "display ", "prompt ", "loop ", "iterate ", "for ", "if ", "while ", "until ",
                 "do", "unless", "throw ", "inject ", "alias ", "header ", "pragma ", "include ",
                 "export ", "struct ", "enum ", "config ", "DataType ", "load ", "import ",
                 "lib ", "library ", "class ", "def ", "func ", "method ", "async ", "sync ",
