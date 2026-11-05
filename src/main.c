@@ -4669,8 +4669,8 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
         Token rp = getNextToken(cursor);
         if (rp.type != TOKEN_RPAREN) {
             char tokval[64] = "";
-            if (rp.value) strncpy(tokval, rp.value, 63);
-            tokval[63] = '\0';
+            if (rp.value) { strncpy(tokval, rp.value, 63);
+            tokval[63] = '\0'; }
             int toktype = rp.type;
             freeToken(&rp);
             throw_error("SyntaxError", "Expected ')' on line %d, got token type %d ('%s')", current_executing_line, toktype, tokval);
