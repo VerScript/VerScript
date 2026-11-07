@@ -6510,6 +6510,28 @@ void parse_lines(const char *buffer) {
     }
 }
 
+static const char *find_in_clause(const char *str) {
+    if (!str) return NULL;
+    int in_double = 0;
+    int in_single = 0;
+    for (const char *p = str; *p; p++) {
+        if (*p == '\\' && (in_double || in_single) && *(p + 1)) {
+            p++;
+            continue;
+        }
+        if (*p == '"' && !in_single) {
+            in_double = !in_double;
+        } else if (*p == '\'' && !in_double) {
+            in_single = !in_single;
+        } else if (!in_double && !in_single) {
+            if (isspace((unsigned char)*p) && p[1] == 'i' && p[2] == 'n' && (isspace((unsigned char)p[3]) || p[3] == '\0')) {
+                return p;
+            }
+        }
+    }
+    return NULL;
+}
+
 void execute_line(const char *text, int line_num) {
     char resolved_buf[2048];
     const char *resolved_text = resolve_alias_line(text, resolved_buf, sizeof(resolved_buf));
@@ -6716,7 +6738,7 @@ void execute_line(const char *text, int line_num) {
         }
         else if (t.type == TOKEN_DISPLAY) {
             char target_term[64] = "default";
-            const char *in_pos = strstr(resolved_text, " in ");
+            const char *in_pos = find_in_clause(resolved_text);
             if (in_pos) {
                 const char *p = in_pos + 4;
                 while (isspace((unsigned char)*p)) p++;
@@ -6837,7 +6859,7 @@ void execute_line(const char *text, int line_num) {
                 }
             }
             char target_surf[64] = "default2D";
-            const char *in_pos = strstr(resolved_text, " in ");
+            const char *in_pos = find_in_clause(resolved_text);
             if (in_pos) {
                 const char *p = in_pos + 4;
                 while (isspace((unsigned char)*p)) p++;
@@ -6863,7 +6885,7 @@ void execute_line(const char *text, int line_num) {
                 }
             }
             char target_surf[64] = "default3D";
-            const char *in_pos = strstr(resolved_text, " in ");
+            const char *in_pos = find_in_clause(resolved_text);
             if (in_pos) {
                 const char *p = in_pos + 4;
                 while (isspace((unsigned char)*p)) p++;
