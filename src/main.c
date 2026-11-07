@@ -4682,7 +4682,7 @@ int evaluate_operand_val(const char **cursor, char **out_str, int *out_type, Arr
             }
             acc *= -1;
         }
-    } else if (t.type == TOKEN_IDENTIFIER) {
+    } else if (t.type == TOKEN_IDENTIFIER || (t.value != NULL && get_var(t.value) != NULL)) {
         // 1. Check if class instantiation: ClassName(...)
         ClassDef *cd = find_class(t.value);
         Token peek = peekToken(cursor);
@@ -6427,9 +6427,20 @@ void parse_lines(const char *buffer) {
         int in_string = 0;
 
         while (*src_ptr != '\0') {
-            if (!in_multiline_comment && *src_ptr == '"') {
-                in_string = !in_string;
+            if (!in_multiline_comment && (*src_ptr == '"' || *src_ptr == '\'')) {
+                char q = *src_ptr;
                 clean_line[clean_pos++] = *src_ptr++;
+                while (*src_ptr != '\0' && *src_ptr != q) {
+                    if (*src_ptr == '\\' && *(src_ptr + 1) != '\0') {
+                        clean_line[clean_pos++] = *src_ptr++;
+                        clean_line[clean_pos++] = *src_ptr++;
+                    } else {
+                        clean_line[clean_pos++] = *src_ptr++;
+                    }
+                }
+                if (*src_ptr == q) {
+                    clean_line[clean_pos++] = *src_ptr++;
+                }
             } else {
                 if (in_multiline_comment) {
                     if (src_ptr[0] == '!' && src_ptr[1] == '!') {
@@ -7128,11 +7139,16 @@ void execute_line(const char *text, int line_num) {
         else if (t.type == TOKEN_SET) {
             Token var_tok = getNextToken(&cursor);
             char decl_type[64] = "";
-            if (is_type_token(var_tok.type, var_tok.value)) {
+            Token next_peek = peekToken(&cursor);
+            if (next_peek.type != TOKEN_COLON && is_type_token(var_tok.type, var_tok.value)) {
                 strncpy(decl_type, get_type_name_from_token(&var_tok), 63);
                 decl_type[63] = '\0';
                 freeToken(&var_tok);
                 var_tok = getNextToken(&cursor);
+            }
+            freeToken(&next_peek);
+            if (var_tok.type != TOKEN_IDENTIFIER && var_tok.value != NULL && (var_tok.type == TOKEN_TEMP || is_type_token(var_tok.type, var_tok.value))) {
+                var_tok.type = TOKEN_IDENTIFIER;
             }
             if (var_tok.type != TOKEN_IDENTIFIER) {
                 freeToken(&var_tok);

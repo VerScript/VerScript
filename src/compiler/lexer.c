@@ -510,18 +510,20 @@ Token getNextToken(const char **cursor) {
     if (strncmp(*cursor, "\xE2\x8C\x88", 3) == 0) { token.type = TOKEN_CEIL; (*cursor) += 3; return token; } // ⌈
     if (strncmp(*cursor, "\xE2\x8C\x89", 3) == 0) { token.type = TOKEN_PIPE; (*cursor) += 3; return token; } // ⌉
 
-    // Strings
-    if (**cursor == '"') {
+    // Strings (double and single quoted)
+    if (**cursor == '"' || **cursor == '\'') {
+        char quote = **cursor;
         (*cursor)++;
         char buf[8192];
         int bi = 0;
-        while (**cursor != '"' && **cursor != '\0') {
+        while (**cursor != quote && **cursor != '\0') {
             if (**cursor == '\\' && *(*cursor + 1) != '\0') {
                 (*cursor)++;
                 if (**cursor == 'n') buf[bi++] = '\n';
                 else if (**cursor == 't') buf[bi++] = '\t';
                 else if (**cursor == 'r') buf[bi++] = '\r';
                 else if (**cursor == '"') buf[bi++] = '"';
+                else if (**cursor == '\'') buf[bi++] = '\'';
                 else if (**cursor == '\\') buf[bi++] = '\\';
                 else buf[bi++] = **cursor;
                 (*cursor)++;
@@ -536,7 +538,7 @@ Token getNextToken(const char **cursor) {
         track_alloc(token.value);
         memcpy(token.value, buf, bi + 1);
         token.type = TOKEN_STRING;
-        if (**cursor == '"') (*cursor)++;
+        if (**cursor == quote) (*cursor)++;
         return token;
     }
 
