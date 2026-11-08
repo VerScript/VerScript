@@ -346,6 +346,7 @@ Token getNextToken(const char **cursor) {
 
         // Native Math Keywords
         if (len == 4 && strncmp(start, "sqrt", 4) == 0) { token.type = TOKEN_SQRT; return token; }
+    if (len == 4 && strncmp(start, "cbrt", 4) == 0) { token.type = TOKEN_CBRT; return token; }
         if (len == 2 && strncmp(start, "rt", 2) == 0) { token.type = TOKEN_RT; return token; }
         if (len == 3 && strncmp(start, "min", 3) == 0) { token.type = TOKEN_MIN; return token; }
         if (len == 3 && strncmp(start, "max", 3) == 0) { token.type = TOKEN_MAX; return token; }
@@ -442,6 +443,8 @@ Token getNextToken(const char **cursor) {
         if (len == 3 && strncmp(start, "for", 3) == 0) { token.type = TOKEN_FOR; return token; }
         if (len == 4 && strncmp(start, "null", 4) == 0) { token.type = TOKEN_NULL; return token; }
         if (len == 3 && strncmp(start, "nil", 3) == 0) { token.type = TOKEN_NIL; return token; }
+        if (len == 5 && strncmp(start, "defer", 5) == 0) { token.type = TOKEN_DEFER; return token; }
+        if (len == 5 && strncmp(start, "panic", 5) == 0) { token.type = TOKEN_PANIC; return token; }
 
         token.type = TOKEN_IDENTIFIER;
         return token;
