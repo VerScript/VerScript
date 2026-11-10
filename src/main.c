@@ -841,6 +841,7 @@ void array_append(Array *arr, const Variable *val) {
         Variable *tmp = realloc(arr->items, new_cap * sizeof(Variable));
         if (!tmp) { if (arr->items) track_alloc((char*)arr->items);  printf("ERROR: MemoryAllocationError\n"); exit(1); }
         arr->items = tmp;
+        memset(arr->items + arr->capacity, 0, (new_cap - arr->capacity) * sizeof(Variable));
         track_alloc((char*)arr->items);
         arr->capacity = new_cap;
     }
@@ -1634,6 +1635,7 @@ Variable* find_var(const char *name) {
                     exit(1);
                 }
                 symtable = tmp;
+                memset(symtable + var_capacity, 0, (new_capacity - var_capacity) * sizeof(Variable));
                 var_capacity = new_capacity;
             }
             v = &symtable[var_count++];
@@ -1889,6 +1891,7 @@ Variable* set_var_scoped(const char *name, int line_num) {
             Variable *tmp = realloc(current_entity->dynamic_vars, new_cap * sizeof(Variable));
             if (!tmp) { if (current_entity->dynamic_vars) track_alloc((char*)current_entity->dynamic_vars); throw_error("MemoryAllocationError", "Memory allocation failed for entity dynamic vars"); }
             current_entity->dynamic_vars = tmp;
+            memset(current_entity->dynamic_vars + current_entity->dynamic_capacity, 0, (new_cap - current_entity->dynamic_capacity) * sizeof(Variable));
             track_alloc((char*)current_entity->dynamic_vars);
             current_entity->dynamic_capacity = new_cap;
         }
@@ -1911,6 +1914,7 @@ Variable* set_var_scoped(const char *name, int line_num) {
             Variable *tmp = realloc(symtable, new_capacity * sizeof(Variable));
             if (!tmp) throw_error("MemoryAllocationError", "Memory allocation failed");
             symtable = tmp;
+            memset(symtable + var_capacity, 0, (new_capacity - var_capacity) * sizeof(Variable));
             var_capacity = new_capacity;
         }
         Variable *v = &symtable[var_count++];
@@ -1967,6 +1971,7 @@ Variable* set_var_scoped(const char *name, int line_num) {
             throw_error("MemoryAllocationError", "Memory allocation failed");
         }
         symtable = tmp;
+        memset(symtable + var_capacity, 0, (new_capacity - var_capacity) * sizeof(Variable));
         var_capacity = new_capacity;
     }
 
@@ -2712,6 +2717,7 @@ void add_metadata_var(Variable **vars, int *count, int *capacity, const char *ke
         Variable *tmp = realloc(*vars, new_cap * sizeof(Variable));
         if (!tmp) { if (*vars) track_alloc((char*)*vars); throw_error("MemoryAllocationError", "Memory allocation failed for metadata"); }
         *vars = tmp;
+        memset(*vars + (*count), 0, (new_cap - (*count)) * sizeof(Variable));
         track_alloc((char*)*vars);
         *capacity = new_cap;
     }
@@ -2913,6 +2919,7 @@ void call_routine(Routine *r, const char **cursor, int line_num) {
                 throw_error("MemoryAllocationError", "Memory allocation failed");
             }
             symtable = tmp;
+            memset(symtable + var_capacity, 0, (new_capacity - var_capacity) * sizeof(Variable));
             var_capacity = new_capacity;
         }
         Variable *param_var = &symtable[var_count++];
@@ -3039,6 +3046,7 @@ void call_routine_val(Routine *r, const char **cursor, char **out_str, int *out_
                 throw_error("MemoryAllocationError", "Memory allocation failed");
             }
             symtable = tmp;
+            memset(symtable + var_capacity, 0, (new_capacity - var_capacity) * sizeof(Variable));
             var_capacity = new_capacity;
         }
         Variable *param_var = &symtable[var_count++];
@@ -3173,6 +3181,7 @@ Entity* instantiate_entity(ClassDef *cd, const char **cursor, int line_num) {
             Variable *tmp = realloc(symtable, new_capacity * sizeof(Variable));
             if (!tmp) throw_error("MemoryAllocationError", "Memory allocation failed");
             symtable = tmp;
+            memset(symtable + var_capacity, 0, (new_capacity - var_capacity) * sizeof(Variable));
             var_capacity = new_capacity;
         }
         Variable *param_var = &symtable[var_count++];
@@ -3201,6 +3210,7 @@ Entity* instantiate_entity(ClassDef *cd, const char **cursor, int line_num) {
             Variable *tmp = realloc(ent->dynamic_vars, new_cap * sizeof(Variable));
             if (!tmp) { if (ent->dynamic_vars) track_alloc((char*)ent->dynamic_vars); throw_error("MemoryAllocationError", "Memory allocation failed"); }
             ent->dynamic_vars = tmp;
+            memset(ent->dynamic_vars + ent->dynamic_capacity, 0, (new_cap - ent->dynamic_capacity) * sizeof(Variable));
             track_alloc((char*)ent->dynamic_vars);
             ent->dynamic_capacity = new_cap;
         }
@@ -3267,7 +3277,9 @@ Entity* instantiate_entity(ClassDef *cd, const char **cursor, int line_num) {
                         int *ptmp = realloc(ent->static_is_public, new_cap * sizeof(int));
                         if (!tmp || !ptmp) { if (ent->static_vars) track_alloc((char*)ent->static_vars); if (ent->static_is_public) track_alloc((char*)ent->static_is_public); throw_error("MemoryAllocationError", "Memory allocation failed"); }
                         ent->static_vars = tmp;
+                        memset(ent->static_vars + ent->static_capacity, 0, (new_cap - ent->static_capacity) * sizeof(Variable));
                         ent->static_is_public = ptmp;
+                        memset(ent->static_is_public + ent->static_capacity, 0, (new_cap - ent->static_capacity) * sizeof(int));
                         track_alloc((char*)ent->static_vars);
                         track_alloc((char*)ent->static_is_public);
                         ent->static_capacity = new_cap;
@@ -3325,6 +3337,7 @@ Entity* instantiate_entity(ClassDef *cd, const char **cursor, int line_num) {
                     Routine *tmp = realloc(ent->methods, new_cap * sizeof(Routine));
                     if (!tmp) { if (ent->methods) track_alloc((char*)ent->methods); throw_error("MemoryAllocationError", "Memory allocation failed"); }
                     ent->methods = tmp;
+                    memset(ent->methods + ent->method_capacity, 0, (new_cap - ent->method_capacity) * sizeof(Routine));
                     track_alloc((char*)ent->methods);
                     ent->method_capacity = new_cap;
                 }
@@ -3459,6 +3472,7 @@ Entity* instantiate_library_entity(LibraryDef *lib, const char **cursor, int lin
             Variable *tmp = realloc(symtable, new_capacity * sizeof(Variable));
             if (!tmp) throw_error("MemoryAllocationError", "Memory allocation failed");
             symtable = tmp;
+            memset(symtable + var_capacity, 0, (new_capacity - var_capacity) * sizeof(Variable));
             var_capacity = new_capacity;
         }
         Variable *param_var = &symtable[var_count++];
@@ -3487,6 +3501,7 @@ Entity* instantiate_library_entity(LibraryDef *lib, const char **cursor, int lin
             Variable *tmp = realloc(ent->dynamic_vars, new_cap * sizeof(Variable));
             if (!tmp) { if (ent->dynamic_vars) track_alloc((char*)ent->dynamic_vars); throw_error("MemoryAllocationError", "Memory allocation failed"); }
             ent->dynamic_vars = tmp;
+            memset(ent->dynamic_vars + ent->dynamic_capacity, 0, (new_cap - ent->dynamic_capacity) * sizeof(Variable));
             track_alloc((char*)ent->dynamic_vars);
             ent->dynamic_capacity = new_cap;
         }
@@ -3530,6 +3545,7 @@ Entity* instantiate_library_entity(LibraryDef *lib, const char **cursor, int lin
             Variable *tmp = realloc(ent->dynamic_vars, new_cap * sizeof(Variable));
             if (!tmp) { if (ent->dynamic_vars) track_alloc((char*)ent->dynamic_vars); throw_error("MemoryAllocationError", "Memory allocation failed"); }
             ent->dynamic_vars = tmp;
+            memset(ent->dynamic_vars + ent->dynamic_capacity, 0, (new_cap - ent->dynamic_capacity) * sizeof(Variable));
             track_alloc((char*)ent->dynamic_vars);
             ent->dynamic_capacity = new_cap;
         }
@@ -6836,6 +6852,7 @@ void parse_lines(const char *buffer) {
                 throw_error("MemoryAllocationError", "Memory allocation failed");
             }
             lines = tmp;
+            memset(lines + line_capacity, 0, (new_capacity - line_capacity) * sizeof(Line));
             line_capacity = new_capacity;
         }
         lines[line_count].text = code;
@@ -8218,6 +8235,7 @@ void execute_line(const char *text, int line_num) {
                             Variable *tmp = realloc(lib->dynamic_vars, new_cap * sizeof(Variable));
                             if (!tmp) { if (lib->dynamic_vars) track_alloc((char*)lib->dynamic_vars); throw_error("MemoryAllocationError", "Memory allocation failed"); }
                             lib->dynamic_vars = tmp;
+                            memset(lib->dynamic_vars + lib->dynamic_capacity, 0, (new_cap - lib->dynamic_capacity) * sizeof(Variable));
                             track_alloc((char*)lib->dynamic_vars);
                             lib->dynamic_capacity = new_cap;
                             Variable *nv = &lib->dynamic_vars[lib->dynamic_count++];
@@ -8268,6 +8286,7 @@ void execute_line(const char *text, int line_num) {
                             Variable *tmp = realloc(ent->dynamic_vars, new_cap * sizeof(Variable));
                             if (!tmp) { if (ent->dynamic_vars) track_alloc((char*)ent->dynamic_vars); throw_error("MemoryAllocationError", "Memory allocation failed"); }
                             ent->dynamic_vars = tmp;
+                            memset(ent->dynamic_vars + ent->dynamic_capacity, 0, (new_cap - ent->dynamic_capacity) * sizeof(Variable));
                             track_alloc((char*)ent->dynamic_vars);
                             ent->dynamic_capacity = new_cap;
                             Variable *nv = &ent->dynamic_vars[ent->dynamic_count++];
@@ -8968,6 +8987,7 @@ void execute_block(int start, int end) {
                                 int new_cap = ent->dynamic_capacity * 2;
                                 untrack_alloc((char*)ent->dynamic_vars);
                                 ent->dynamic_vars = realloc(ent->dynamic_vars, new_cap * sizeof(Variable));
+                                memset(ent->dynamic_vars + ent->dynamic_capacity, 0, (new_cap - ent->dynamic_capacity) * sizeof(Variable));
                                 track_alloc((char*)ent->dynamic_vars);
                                 ent->dynamic_capacity = new_cap;
                             }
@@ -9007,6 +9027,7 @@ void execute_block(int start, int end) {
                                     int new_cap = ent->dynamic_capacity * 2;
                                     untrack_alloc((char*)ent->dynamic_vars);
                                     ent->dynamic_vars = realloc(ent->dynamic_vars, new_cap * sizeof(Variable));
+                                    memset(ent->dynamic_vars + ent->dynamic_capacity, 0, (new_cap - ent->dynamic_capacity) * sizeof(Variable));
                                     track_alloc((char*)ent->dynamic_vars);
                                     ent->dynamic_capacity = new_cap;
                                 }
@@ -9416,6 +9437,7 @@ void execute_block(int start, int end) {
                                         Routine *tmp = realloc(sub_lib->routines, new_cap * sizeof(Routine));
                                         if (!tmp) { if (sub_lib->routines) track_alloc((char*)sub_lib->routines); throw_error("MemoryAllocationError", "Memory allocation failed"); }
                                         sub_lib->routines = tmp;
+                                        memset(sub_lib->routines + sub_lib->routine_capacity, 0, (new_cap - sub_lib->routine_capacity) * sizeof(Routine));
                                         track_alloc((char*)sub_lib->routines);
                                         sub_lib->routine_capacity = new_cap;
                                     }
@@ -9457,6 +9479,7 @@ void execute_block(int start, int end) {
                                                     Variable *tmp = realloc(sub_lib->const_vars, new_cap * sizeof(Variable));
                                                     if (!tmp) { if (sub_lib->const_vars) track_alloc((char*)sub_lib->const_vars); throw_error("MemoryAllocationError", "Memory allocation failed"); }
                                                     sub_lib->const_vars = tmp;
+                                                    memset(sub_lib->const_vars + sub_lib->const_capacity, 0, (new_cap - sub_lib->const_capacity) * sizeof(Variable));
                                                     track_alloc((char*)sub_lib->const_vars);
                                                     sub_lib->const_capacity = new_cap;
                                                 }
@@ -9476,6 +9499,7 @@ void execute_block(int start, int end) {
                                                     Variable *tmp = realloc(sub_lib->dynamic_vars, new_cap * sizeof(Variable));
                                                     if (!tmp) { if (sub_lib->dynamic_vars) track_alloc((char*)sub_lib->dynamic_vars); throw_error("MemoryAllocationError", "Memory allocation failed"); }
                                                     sub_lib->dynamic_vars = tmp;
+                                                    memset(sub_lib->dynamic_vars + sub_lib->dynamic_capacity, 0, (new_cap - sub_lib->dynamic_capacity) * sizeof(Variable));
                                                     track_alloc((char*)sub_lib->dynamic_vars);
                                                     sub_lib->dynamic_capacity = new_cap;
                                                 }
@@ -9606,6 +9630,7 @@ void execute_block(int start, int end) {
                                 Routine *tmp = realloc(lib->routines, new_cap * sizeof(Routine));
                                 if (!tmp) { if (lib->routines) track_alloc((char*)lib->routines); throw_error("MemoryAllocationError", "Memory allocation failed"); }
                                 lib->routines = tmp;
+                                memset(lib->routines + lib->routine_capacity, 0, (new_cap - lib->routine_capacity) * sizeof(Routine));
                                 track_alloc((char*)lib->routines);
                                 lib->routine_capacity = new_cap;
                             }
@@ -9650,6 +9675,7 @@ void execute_block(int start, int end) {
                                             Variable *tmp = realloc(lib->const_vars, new_cap * sizeof(Variable));
                                             if (!tmp) { if (lib->const_vars) track_alloc((char*)lib->const_vars); throw_error("MemoryAllocationError", "Memory allocation failed"); }
                                             lib->const_vars = tmp;
+                                            memset(lib->const_vars + lib->const_capacity, 0, (new_cap - lib->const_capacity) * sizeof(Variable));
                                             track_alloc((char*)lib->const_vars);
                                             lib->const_capacity = new_cap;
                                         }
@@ -9669,6 +9695,7 @@ void execute_block(int start, int end) {
                                             Variable *tmp = realloc(lib->dynamic_vars, new_cap * sizeof(Variable));
                                             if (!tmp) { if (lib->dynamic_vars) track_alloc((char*)lib->dynamic_vars); throw_error("MemoryAllocationError", "Memory allocation failed"); }
                                             lib->dynamic_vars = tmp;
+                                            memset(lib->dynamic_vars + lib->dynamic_capacity, 0, (new_cap - lib->dynamic_capacity) * sizeof(Variable));
                                             track_alloc((char*)lib->dynamic_vars);
                                             lib->dynamic_capacity = new_cap;
                                         }
